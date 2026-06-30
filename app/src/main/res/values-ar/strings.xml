@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">قارئ الباركود المتعدد</string>
+    <string name="permission_rationale">يلزم الوصول إلى الكاميرا لمسح الباركود ورموز QR.</string>
+    <string name="grant_permission">السماح باستخدام الكاميرا</string>
+    <string name="open_settings">فتح الإعدادات</string>
+    <string name="detected_count">تم العثور على: %1$d</string>
+    <string name="no_codes">وجّه الكاميرا نحو الباركود أو رموز QR</string>
+    <string name="torch">الإضاءة</string>
+</resources>

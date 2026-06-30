@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Multi Barcode Reader</string>
+    <string name="permission_rationale">Camera access is required to scan barcodes and QR codes.</string>
+    <string name="grant_permission">Grant camera permission</string>
+    <string name="open_settings">Open settings</string>
+    <string name="detected_count">Detected: %1$d</string>
+    <string name="no_codes">Point the camera at barcodes or QR codes</string>
+    <string name="torch">Torch</string>
+</resources>

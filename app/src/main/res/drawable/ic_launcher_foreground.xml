@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- QR-like glyph centered in the safe zone -->
+    <group android:scaleX="0.55" android:scaleY="0.55"
+        android:translateX="24.3" android:translateY="24.3">
+        <path android:fillColor="#00E676"
+            android:pathData="M6,6 h22 v22 h-22 z M12,12 v10 h10 v-10 z" />
+        <path android:fillColor="#00E676"
+            android:pathData="M80,6 h22 v22 h-22 z M86,12 v10 h10 v-10 z" />
+        <path android:fillColor="#00E676"
+            android:pathData="M6,80 h22 v22 h-22 z M12,86 v10 h10 v-10 z" />
+        <path android:fillColor="#00E676"
+            android:pathData="M40,6 h8 v8 h-8 z M58,6 h8 v8 h-8 z M40,20 h8 v14 h-8 z
+                M58,20 h8 v8 h-8 z M80,40 h8 v8 h-8 z M94,40 h8 v8 h-8 z
+                M40,58 h8 v8 h-8 z M58,58 h8 v8 h-8 z M80,58 h8 v8 h-8 z
+                M40,80 h8 v8 h-8 z M58,80 h8 v22 h-8 z M80,80 h8 v8 h-8 z
+                M94,80 h8 v22 h-8 z M80,94 h8 v8 h-8 z" />
+    </group>
+</vector>
