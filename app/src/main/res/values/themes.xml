@@ -1,10 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.MultiBarcodeReader" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/purple_500</item>
-        <item name="colorPrimaryVariant">@color/purple_700</item>
-        <item name="colorSecondary">@color/teal_200</item>
+    <!-- Compose renders its own Material 3 styling; this just needs to be a valid
+         no-action-bar host theme so the Activity can start. -->
+    <style name="Theme.MultiBarcodeReader" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/black</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:windowTranslucentStatus">true</item>
     </style>
 </resources>
