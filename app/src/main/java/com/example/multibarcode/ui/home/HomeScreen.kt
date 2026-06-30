@@ -14,9 +14,9 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddShoppingCart
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -47,7 +47,7 @@ fun HomeScreen(
         HomeItem("طلبية جديدة", Icons.Default.AddShoppingCart, onNewOrder),
         HomeItem("المنتجات", Icons.Default.Inventory2, onProducts),
         HomeItem("الزبائن", Icons.Default.People, onCustomers),
-        HomeItem("الطلبيات", Icons.Default.ReceiptLong, onOrders),
+        HomeItem("الطلبيات", Icons.AutoMirrored.Filled.ReceiptLong, onOrders),
         HomeItem("الماسح المباشر", Icons.Default.QrCodeScanner, onLiveScan),
     )
 
