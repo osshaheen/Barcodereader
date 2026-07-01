@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "com.baghd.barcode"
-        minSdk = 21
+        minSdk = 23
         targetSdk = 34
         versionCode = 3
         versionName = "3.0"
