@@ -22,7 +22,7 @@ data class AuthUiState(
 
 class AuthViewModel(app: Application) : AndroidViewModel(app) {
     private val auth = AuthRepository.get()
-    private val data = AppRepository.get()
+    private val data = AppRepository.get(app)
 
     private val _ui = MutableStateFlow(AuthUiState())
     val ui: StateFlow<AuthUiState> = _ui.asStateFlow()

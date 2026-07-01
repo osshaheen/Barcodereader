@@ -20,6 +20,7 @@ import com.example.multibarcode.ui.order.NewOrderScreen
 import com.example.multibarcode.ui.order.OrdersScreen
 import com.example.multibarcode.ui.products.BulkAddScreen
 import com.example.multibarcode.ui.products.ProductsScreen
+import com.example.multibarcode.ui.sync.UploadScreen
 import com.example.multibarcode.ui.scan.LiveScanScreen
 
 object Routes {
@@ -32,6 +33,7 @@ object Routes {
     const val LIVE_SCAN = "liveScan"
     const val BULK_ADD = "bulkAdd"
     const val ADMIN = "admin"
+    const val UPLOAD = "upload"
 
     fun customerDetail(id: String) = "$CUSTOMER_DETAIL/$id"
 }
@@ -63,10 +65,14 @@ private fun MainNav(onSignOut: () -> Unit, isAdmin: Boolean) {
                 onSignOut = onSignOut,
                 isAdmin = isAdmin,
                 onAdmin = { nav.navigate(Routes.ADMIN) },
+                onUpload = { nav.navigate(Routes.UPLOAD) },
             )
         }
         composable(Routes.ADMIN) {
             AdminScreen(onBack = { nav.popBackStack() })
+        }
+        composable(Routes.UPLOAD) {
+            UploadScreen(onBack = { nav.popBackStack() })
         }
         composable(Routes.PRODUCTS) {
             ProductsScreen(

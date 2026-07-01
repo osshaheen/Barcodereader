@@ -16,6 +16,7 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.AddShoppingCart
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.QrCodeScanner
@@ -29,11 +30,13 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 private data class HomeItem(val title: String, val icon: ImageVector, val onClick: () -> Unit)
 
@@ -48,7 +51,10 @@ fun HomeScreen(
     onSignOut: () -> Unit,
     isAdmin: Boolean,
     onAdmin: () -> Unit,
+    onUpload: () -> Unit,
+    vm: HomeViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
 ) {
+    val pendingCount by vm.pendingCount.collectAsStateWithLifecycle()
     val items = buildList {
         add(HomeItem("طلبية جديدة", Icons.Default.AddShoppingCart, onNewOrder))
         add(HomeItem("المنتجات", Icons.Default.Inventory2, onProducts))
@@ -70,12 +76,32 @@ fun HomeScreen(
             )
         },
     ) { padding ->
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            modifier = Modifier.fillMaxSize().padding(padding).padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            if (pendingCount > 0) {
+                Card(
+                    onClick = onUpload,
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.CloudUpload, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
+                        Text(
+                            "  لديك $pendingCount عنصر بانتظار الرفع — اضغط للرفع",
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+            }
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                modifier = Modifier.weight(1f).fillMaxWidth().padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
             items(items) { item ->
                 Card(
                     onClick = item.onClick,
@@ -105,6 +131,7 @@ fun HomeScreen(
                     }
                 }
             }
+        }
         }
     }
 }

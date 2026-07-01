@@ -1,5 +1,7 @@
 package com.example.multibarcode.data
 
+import android.content.Context
+import com.example.multibarcode.util.Connectivity
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentSnapshot
@@ -10,6 +12,8 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
+import org.json.JSONArray
+import org.json.JSONObject
 
 /** A single product line to persist when saving an order. */
 data class NewOrderItem(
@@ -28,13 +32,29 @@ data class NewOrderItem(
  * and sync automatically when the connection returns. Filtering, pagination and balance
  * computation are done in memory by the ViewModels over these snapshot flows.
  */
-class AppRepository {
+class AppRepository(private val appContext: Context) {
 
     private val db = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
+    private val outbox = OutboxDatabase.get(appContext).pendingOpDao()
 
     private fun col(name: String): CollectionReference? =
         auth.currentUser?.uid?.let { db.collection("users").document(it).collection(name) }
+
+    private fun online() = Connectivity.isOnline(appContext)
+
+    /** Either write [data] to Firestore now (online) or queue it in the local outbox (offline). */
+    private suspend fun writeOrQueue(collection: String, label: String, data: Map<String, Any?>, now: Long): Boolean {
+        return if (online()) {
+            col(collection)?.add(data)?.await()
+            true // uploaded
+        } else {
+            outbox.insert(
+                PendingOp(type = collection, label = label, payload = mapToJson(data), createdAt = now)
+            )
+            false // queued locally
+        }
+    }
 
     // ---- Generic snapshot flow ------------------------------------------
     private fun <T> collectionFlow(name: String, map: (DocumentSnapshot) -> T?): Flow<List<T>> =
@@ -65,7 +85,6 @@ class AppRepository {
     }
 
     suspend fun upsertProduct(product: Product): String {
-        val c = col("products") ?: return ""
         val data = mapOf(
             "barcode" to product.barcode,
             "name" to product.name,
@@ -74,9 +93,14 @@ class AppRepository {
             "imageFileId" to product.imageFileId,
         )
         return if (product.id.isBlank()) {
-            c.add(data).await().id
+            if (online()) {
+                col("products")?.add(data)?.await()?.id ?: ""
+            } else {
+                outbox.insert(PendingOp("products", "منتج — ${product.name}", mapToJson(data), product.createdAt))
+                "local-${product.createdAt}"
+            }
         } else {
-            c.document(product.id).set(data).await(); product.id
+            col("products")?.document(product.id)?.set(data)?.await(); product.id
         }
     }
 
@@ -182,7 +206,6 @@ class AppRepository {
     fun customersFlow(): Flow<List<Customer>> = collectionFlow("customers", ::toCustomer)
 
     suspend fun upsertCustomer(customer: Customer): String {
-        val c = col("customers") ?: return ""
         val data = mapOf(
             "name" to customer.name,
             "phone" to customer.phone,
@@ -190,9 +213,11 @@ class AppRepository {
             "createdAt" to customer.createdAt,
         )
         return if (customer.id.isBlank()) {
-            c.add(data).await().id
+            writeOrQueue("customers", "زبون — ${customer.name}", data, customer.createdAt)
+            "saved"
         } else {
-            c.document(customer.id).set(data).await(); customer.id
+            // Edits target an existing Firestore doc (kept online).
+            col("customers")?.document(customer.id)?.set(data)?.await(); customer.id
         }
     }
 
@@ -209,7 +234,6 @@ class AppRepository {
         items: List<NewOrderItem>,
         now: Long,
     ): String {
-        val c = col("orders") ?: return ""
         val itemMaps = items.map {
             mapOf(
                 "productId" to it.productId,
@@ -228,21 +252,22 @@ class AppRepository {
             "createdAt" to now,
             "items" to itemMaps,
         )
-        return c.add(data).await().id
+        writeOrQueue("orders", "طلبية — ${items.sumOf { it.quantity }} صنف", data, now)
+        return "saved"
     }
 
     // ---- Payments ---------------------------------------------------------
     fun paymentsFlow(): Flow<List<Payment>> = collectionFlow("payments", ::toPayment)
 
     suspend fun addPayment(payment: Payment): String {
-        val c = col("payments") ?: return ""
         val data = mapOf(
             "customerId" to payment.customerId,
             "amount" to payment.amount,
             "note" to payment.note,
             "createdAt" to payment.createdAt,
         )
-        return c.add(data).await().id
+        writeOrQueue("payments", "دفعة — ${payment.amount}", data, payment.createdAt)
+        return "saved"
     }
 
     suspend fun deletePayment(payment: Payment) {
@@ -299,14 +324,55 @@ class AppRepository {
         )
     }
 
+    // ---- Local outbox (offline queue) + manual upload ---------------------
+    fun pendingOpsFlow(): Flow<List<PendingOp>> = outbox.observeAll()
+    fun pendingCountFlow(): Flow<Int> = outbox.count()
+
+    /** Push every queued op to Firestore, deleting each on success. Returns uploaded count. */
+    suspend fun uploadPending(): Int {
+        if (!online()) return 0
+        var uploaded = 0
+        for (op in outbox.getAll()) {
+            try {
+                col(op.type)?.add(jsonToMap(op.payload))?.await()
+                outbox.delete(op)
+                uploaded++
+            } catch (_: Exception) {
+                // keep the op for a later retry
+            }
+        }
+        return uploaded
+    }
+
+    private fun mapToJson(data: Map<String, Any?>): String = JSONObject(data).toString()
+
+    @Suppress("UNCHECKED_CAST")
+    private fun jsonToMap(json: String): Map<String, Any?> = jsonObjectToMap(JSONObject(json))
+
+    private fun jsonObjectToMap(o: JSONObject): Map<String, Any?> {
+        val map = HashMap<String, Any?>()
+        val keys = o.keys()
+        while (keys.hasNext()) {
+            val k = keys.next()
+            map[k] = unwrap(o.get(k))
+        }
+        return map
+    }
+
+    private fun unwrap(value: Any?): Any? = when (value) {
+        is JSONObject -> jsonObjectToMap(value)
+        is JSONArray -> (0 until value.length()).map { unwrap(value.get(it)) }
+        JSONObject.NULL -> null
+        else -> value
+    }
+
     companion object {
         @Volatile
         private var INSTANCE: AppRepository? = null
 
-        /** Kept taking a Context for call-site compatibility; Firebase uses the default app. */
-        fun get(context: Any? = null): AppRepository =
+        fun get(context: Context): AppRepository =
             INSTANCE ?: synchronized(this) {
-                INSTANCE ?: AppRepository().also { INSTANCE = it }
+                INSTANCE ?: AppRepository(context.applicationContext).also { INSTANCE = it }
             }
     }
 }
