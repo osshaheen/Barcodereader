@@ -4,6 +4,10 @@ import SwiftUI
 struct MultiBarcodeApp: App {
     @StateObject private var store = Store()
 
+    init() {
+        FirebaseBootstrap.configureIfPossible()
+    }
+
     var body: some Scene {
         WindowGroup {
             HomeView()
