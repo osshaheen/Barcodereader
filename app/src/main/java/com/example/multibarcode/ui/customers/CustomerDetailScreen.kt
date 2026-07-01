@@ -11,7 +11,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Backup
@@ -42,6 +45,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -73,6 +77,7 @@ fun CustomerDetailScreen(
     var showPayment by remember { mutableStateOf(false) }
     var deletePayment by remember { mutableStateOf<Payment?>(null) }
     var confirmReset by remember { mutableStateOf(false) }
+    var showBalanceDetails by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
 
     LaunchedEffect(message) {
@@ -106,7 +111,7 @@ fun CustomerDetailScreen(
             modifier = Modifier.fillMaxSize().padding(padding).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            item { SummaryCard(state) }
+            item { SummaryCard(state, onClick = { showBalanceDetails = true }) }
 
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -186,20 +191,125 @@ fun CustomerDetailScreen(
             onDismiss = { confirmReset = false },
         )
     }
+
+    if (showBalanceDetails) {
+        BalanceDetailsDialog(state = state, onDismiss = { showBalanceDetails = false })
+    }
 }
 
+/** Status of a customer's balance, used for the colored مدين/دائن/مسدّد label. */
+private enum class BalanceStatus { DEBTOR, CREDITOR, SETTLED }
+
+private fun balanceStatus(balance: Double): BalanceStatus = when {
+    balance > 0.001 -> BalanceStatus.DEBTOR     // الزبون مدين لنا
+    balance < -0.001 -> BalanceStatus.CREDITOR  // له رصيد (دائن)
+    else -> BalanceStatus.SETTLED
+}
+
+private val debtorColor = Color(0xFFD32F2F)
+private val creditorColor = Color(0xFF2E7D32)
+
+private fun balanceColor(status: BalanceStatus): Color = when (status) {
+    BalanceStatus.DEBTOR -> debtorColor
+    else -> creditorColor
+}
+
+private fun balanceTitle(status: BalanceStatus): String = when (status) {
+    BalanceStatus.DEBTOR -> "مدين"
+    BalanceStatus.CREDITOR -> "دائن"
+    BalanceStatus.SETTLED -> "الرصيد مسدّد"
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SummaryCard(state: CustomerDetailUiState) {
+private fun SummaryCard(state: CustomerDetailUiState, onClick: () -> Unit) {
+    val status = balanceStatus(state.balance)
+    val color = balanceColor(status)
     Card(
-        Modifier.fillMaxWidth(),
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
+            // Big colored status line: red = مدين (owes us), green = دائن / مسدّد.
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                Text(balanceTitle(status), color = color, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+                if (status != BalanceStatus.SETTLED) {
+                    Text(
+                        Format.money(kotlin.math.abs(state.balance)),
+                        color = color,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleLarge,
+                    )
+                }
+            }
+            Text(
+                "اضغط لعرض كل التفاصيل",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
+            )
             SummaryRow("إجمالي الطلبيات", Format.money(state.ordersTotal))
             SummaryRow("إجمالي المدفوعات", Format.money(state.paymentsTotal))
-            BalanceLabel(state.balance)
         }
     }
+}
+
+@Composable
+private fun BalanceDetailsDialog(state: CustomerDetailUiState, onDismiss: () -> Unit) {
+    val status = balanceStatus(state.balance)
+    val color = balanceColor(status)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("تفاصيل حساب ${state.customer?.name ?: "الزبون"}") },
+        text = {
+            Column {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("الحالة", fontWeight = FontWeight.Bold)
+                    Text(
+                        if (status == BalanceStatus.SETTLED) balanceTitle(status)
+                        else "${balanceTitle(status)}: ${Format.money(kotlin.math.abs(state.balance))}",
+                        color = color, fontWeight = FontWeight.Bold,
+                    )
+                }
+                SummaryRow("إجمالي الطلبيات", Format.money(state.ordersTotal))
+                SummaryRow("إجمالي المدفوعات", Format.money(state.paymentsTotal))
+
+                SectionTitle("الطلبيات (${state.orders.size})")
+                if (state.orders.isEmpty()) {
+                    Text("لا توجد طلبيات.", style = MaterialTheme.typography.bodySmall)
+                } else {
+                    Column(Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState())) {
+                        state.orders.forEach { o ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(Format.dateTime(o.createdAt), style = MaterialTheme.typography.bodySmall)
+                                Text(Format.money(o.total), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+
+                SectionTitle("المدفوعات (${state.payments.size})")
+                if (state.payments.isEmpty()) {
+                    Text("لا توجد مدفوعات.", style = MaterialTheme.typography.bodySmall)
+                } else {
+                    Column(Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState())) {
+                        state.payments.forEach { p ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(Format.dateTime(p.createdAt), style = MaterialTheme.typography.bodySmall)
+                                Text(Format.money(p.amount), color = creditorColor, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("إغلاق") } },
+    )
 }
 
 @Composable
