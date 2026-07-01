@@ -49,7 +49,9 @@ class NewOrderViewModel(app: Application) : AndroidViewModel(app) {
     private val productsByBarcode = HashMap<String, Product>()
     @Volatile private var productsLoaded = false
 
-    private val toneGen by lazy { ToneGenerator(AudioManager.STREAM_MUSIC, 90) }
+    // Loud scan beep: use the alarm stream (kept separate + typically louder) at max tone volume.
+    private val audioManager = app.getSystemService(android.content.Context.AUDIO_SERVICE) as AudioManager
+    private val toneGen by lazy { ToneGenerator(AudioManager.STREAM_ALARM, ToneGenerator.MAX_VOLUME) }
 
     init {
         viewModelScope.launch {
@@ -90,7 +92,13 @@ class NewOrderViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun beep() {
         try {
-            toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 120)
+            // Push the alarm volume to maximum so every scan is as loud as the device allows.
+            val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+            audioManager.setStreamVolume(AudioManager.STREAM_ALARM, max, 0)
+        } catch (_: Exception) {
+        }
+        try {
+            toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 180)
         } catch (_: Exception) {
         }
     }
