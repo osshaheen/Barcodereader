@@ -11,7 +11,10 @@ object Connectivity {
             ?: return false
         val network = cm.activeNetwork ?: return false
         val caps = cm.getNetworkCapabilities(network) ?: return false
-        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        // Only require that the network claims internet access. We deliberately do NOT require
+        // NET_CAPABILITY_VALIDATED: on many real networks (captive checks, blocked Google
+        // connectivity probes, slow validation) VALIDATED is false even though the internet
+        // works fine — which used to make uploads wrongly report "no internet".
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 }

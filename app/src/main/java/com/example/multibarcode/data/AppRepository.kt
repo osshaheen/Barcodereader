@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -125,7 +126,9 @@ class AppRepository(private val appContext: Context) {
     /** Stamp the shared DB as changed, so other devices are offered a pull. */
     private suspend fun bumpRemoteChange() {
         runCatching {
-            sharedRoot().set(mapOf("lastChange" to FieldValue.serverTimestamp()), SetOptions.merge()).await()
+            withTimeoutOrNull(20_000) {
+                sharedRoot().set(mapOf("lastChange" to FieldValue.serverTimestamp()), SetOptions.merge()).await()
+            }
         }
     }
 
@@ -499,10 +502,11 @@ class AppRepository(private val appContext: Context) {
                 (data["customerId"] as? String)?.let { cid ->
                     idMap[cid]?.let { data["customerId"] = it }
                 }
-                val ref = col(op.type)?.add(data)?.await()
-                if (op.type == "customers" && ref != null) {
-                    idMap["local-${op.id}"] = ref.id
-                }
+                // Bound each write: Firestore's offline writes never complete their await() until
+                // reconnection, so a real network failure would otherwise hang the upload forever.
+                val ref = withTimeoutOrNull(20_000) { col(op.type)?.add(data)?.await() }
+                    ?: break // timed out / offline — stop and keep the rest for a later retry
+                if (op.type == "customers") idMap["local-${op.id}"] = ref.id
                 outbox.delete(op)
                 uploaded++
             } catch (_: Exception) {
