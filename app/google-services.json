@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "618919396372",
+    "project_id": "baghdadi-testing",
+    "storage_bucket": "baghdadi-testing.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:618919396372:android:9790d5b16f70f9acb25301",
+        "android_client_info": {
+          "package_name": "com.baghd.barcode"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBhBdBIVnRf71DKwqDg0gUTbTuWsWtPbaU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

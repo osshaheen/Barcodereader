@@ -5,7 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.multibarcode.data.AppRepository
 import com.example.multibarcode.data.Customer
-import com.example.multibarcode.data.OrderEntity
+import com.example.multibarcode.data.Order
 import com.example.multibarcode.data.Payment
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -15,7 +15,7 @@ import kotlinx.coroutines.launch
 
 data class CustomerDetailUiState(
     val customer: Customer? = null,
-    val orders: List<OrderEntity> = emptyList(),
+    val orders: List<Order> = emptyList(),
     val payments: List<Payment> = emptyList(),
     val ordersTotal: Double = 0.0,
     val paymentsTotal: Double = 0.0,
@@ -25,25 +25,26 @@ data class CustomerDetailUiState(
 
 class CustomerDetailViewModel(
     app: Application,
-    private val customerId: Long,
+    private val customerId: String,
 ) : AndroidViewModel(app) {
 
     private val repo = AppRepository.get(app)
 
     val state: StateFlow<CustomerDetailUiState> =
         combine(
-            repo.observeCustomer(customerId),
-            repo.ordersForCustomer(customerId),
-            repo.paymentsForCustomer(customerId),
-            repo.ordersTotal(customerId),
-            repo.paymentsTotal(customerId),
-        ) { customer, orders, payments, ordersTotal, paymentsTotal ->
+            repo.customersFlow(),
+            repo.ordersFlow(),
+            repo.paymentsFlow(),
+        ) { customers, orders, payments ->
+            val customer = customers.firstOrNull { it.id == customerId }
+            val myOrders = orders.filter { it.customerId == customerId }.sortedByDescending { it.createdAt }
+            val myPayments = payments.filter { it.customerId == customerId }.sortedByDescending { it.createdAt }
             CustomerDetailUiState(
                 customer = customer,
-                orders = orders,
-                payments = payments,
-                ordersTotal = ordersTotal,
-                paymentsTotal = paymentsTotal,
+                orders = myOrders,
+                payments = myPayments,
+                ordersTotal = myOrders.sumOf { it.total },
+                paymentsTotal = myPayments.sumOf { it.amount },
             )
         }.stateIn(
             scope = viewModelScope,

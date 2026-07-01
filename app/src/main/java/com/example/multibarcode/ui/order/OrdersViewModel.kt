@@ -7,9 +7,10 @@ import com.example.multibarcode.data.AppRepository
 import com.example.multibarcode.data.OrderItem
 import com.example.multibarcode.data.OrderRow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 
 data class OrdersUiState(
     val page: Int = 0,
@@ -24,30 +25,34 @@ data class OrdersUiState(
 
 class OrdersViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = AppRepository.get(app)
+    private val pageSize = 15
 
-    private val _state = MutableStateFlow(OrdersUiState())
-    val state: StateFlow<OrdersUiState> = _state.asStateFlow()
+    private val pageFlow = MutableStateFlow(0)
 
-    init { reload() }
+    // Keeps the latest orders so item details can be looked up without another query.
+    private val itemsById = HashMap<String, List<OrderItem>>()
 
-    fun nextPage() {
-        if (_state.value.canNext) { _state.value = _state.value.copy(page = _state.value.page + 1); reload() }
-    }
+    val state: StateFlow<OrdersUiState> =
+        combine(repo.ordersFlow(), repo.customersFlow(), pageFlow) { orders, customers, page ->
+            val names = customers.associate { it.id to it.name }
+            itemsById.clear()
+            orders.forEach { itemsById[it.id] = it.items }
 
-    fun prevPage() {
-        if (_state.value.canPrev) { _state.value = _state.value.copy(page = _state.value.page - 1); reload() }
-    }
+            val rows = orders
+                .sortedByDescending { it.createdAt }
+                .map { OrderRow(it.id, it.customerId?.let(names::get), it.total, it.itemCount, it.createdAt) }
 
-    fun reload() {
-        val s = _state.value
-        viewModelScope.launch {
-            val total = repo.orderCount()
-            val maxPage = if (total == 0) 0 else (total + s.pageSize - 1) / s.pageSize - 1
-            val page = s.page.coerceIn(0, maxPage)
-            val items = repo.orderPageRows(s.pageSize, page * s.pageSize)
-            _state.value = _state.value.copy(items = items, total = total, page = page)
-        }
-    }
+            val total = rows.size
+            val maxPage = if (total == 0) 0 else (total + pageSize - 1) / pageSize - 1
+            val clamped = page.coerceIn(0, maxPage)
+            OrdersUiState(
+                page = clamped, pageSize = pageSize,
+                items = rows.drop(clamped * pageSize).take(pageSize), total = total,
+            )
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), OrdersUiState())
 
-    suspend fun itemsOf(orderId: Long): List<OrderItem> = repo.orderItems(orderId)
+    fun nextPage() { if (state.value.canNext) pageFlow.value = pageFlow.value + 1 }
+    fun prevPage() { if (state.value.canPrev) pageFlow.value = pageFlow.value - 1 }
+
+    fun itemsOf(orderId: String): List<OrderItem> = itemsById[orderId].orEmpty()
 }

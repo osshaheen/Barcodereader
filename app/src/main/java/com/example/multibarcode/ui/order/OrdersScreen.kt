@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
@@ -118,7 +119,7 @@ private fun OrderItemsDialog(
         title = { Text("طلبية #${order.id} — ${order.customerName ?: "بيع نقدي"}") },
         text = {
             LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
-                items(items, key = { it.id }) { line ->
+                itemsIndexed(items) { _, line ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(Modifier.padding(end = 8.dp)) {
                             Text(line.name, fontWeight = FontWeight.Bold)

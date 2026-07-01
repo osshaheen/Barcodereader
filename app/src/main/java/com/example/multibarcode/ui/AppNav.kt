@@ -1,11 +1,16 @@
 package com.example.multibarcode.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.multibarcode.ui.auth.AuthViewModel
+import com.example.multibarcode.ui.auth.LoginScreen
 import com.example.multibarcode.ui.customers.CustomerDetailScreen
 import com.example.multibarcode.ui.customers.CustomersScreen
 import com.example.multibarcode.ui.home.HomeScreen
@@ -23,11 +28,23 @@ object Routes {
     const val ORDERS = "orders"
     const val LIVE_SCAN = "liveScan"
 
-    fun customerDetail(id: Long) = "$CUSTOMER_DETAIL/$id"
+    fun customerDetail(id: String) = "$CUSTOMER_DETAIL/$id"
 }
 
 @Composable
 fun AppNav() {
+    val authVm: AuthViewModel = viewModel()
+    val user by authVm.user.collectAsStateWithLifecycle()
+
+    if (user == null) {
+        LoginScreen(vm = authVm)
+    } else {
+        MainNav(onSignOut = { authVm.signOut() })
+    }
+}
+
+@Composable
+private fun MainNav(onSignOut: () -> Unit) {
     val nav = rememberNavController()
 
     NavHost(navController = nav, startDestination = Routes.HOME) {
@@ -38,6 +55,7 @@ fun AppNav() {
                 onCustomers = { nav.navigate(Routes.CUSTOMERS) },
                 onOrders = { nav.navigate(Routes.ORDERS) },
                 onLiveScan = { nav.navigate(Routes.LIVE_SCAN) },
+                onSignOut = onSignOut,
             )
         }
         composable(Routes.PRODUCTS) {
@@ -57,9 +75,9 @@ fun AppNav() {
         }
         composable(
             route = "${Routes.CUSTOMER_DETAIL}/{customerId}",
-            arguments = listOf(navArgument("customerId") { type = NavType.LongType }),
+            arguments = listOf(navArgument("customerId") { type = NavType.StringType }),
         ) { entry ->
-            val id = entry.arguments?.getLong("customerId") ?: 0L
+            val id = entry.arguments?.getString("customerId").orEmpty()
             CustomerDetailScreen(customerId = id, onBack = { nav.popBackStack() })
         }
         composable(Routes.ORDERS) {

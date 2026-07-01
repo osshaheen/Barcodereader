@@ -49,7 +49,7 @@ import com.example.multibarcode.util.Format
 @Composable
 fun CustomersScreen(
     onBack: () -> Unit,
-    onOpenCustomer: (Long) -> Unit,
+    onOpenCustomer: (String) -> Unit,
     vm: CustomersViewModel = viewModel(),
 ) {
     val state by vm.state.collectAsStateWithLifecycle()

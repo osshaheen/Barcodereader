@@ -12,15 +12,17 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.AddShoppingCart
 import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -42,6 +44,7 @@ fun HomeScreen(
     onCustomers: () -> Unit,
     onOrders: () -> Unit,
     onLiveScan: () -> Unit,
+    onSignOut: () -> Unit,
 ) {
     val items = listOf(
         HomeItem("طلبية جديدة", Icons.Default.AddShoppingCart, onNewOrder),
@@ -52,7 +55,16 @@ fun HomeScreen(
     )
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("قارئ الباركود المتعدد") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("قارئ الباركود المتعدد") },
+                actions = {
+                    IconButton(onClick = onSignOut) {
+                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "تسجيل الخروج")
+                    }
+                },
+            )
+        },
     ) { padding ->
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),

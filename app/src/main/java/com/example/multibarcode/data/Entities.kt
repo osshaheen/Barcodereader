@@ -1,75 +1,57 @@
 package com.example.multibarcode.data
 
-import androidx.room.Entity
-import androidx.room.Index
-import androidx.room.PrimaryKey
-
-/** A product that can be matched by its barcode while scanning an order. */
-@Entity(
-    tableName = "products",
-    indices = [Index(value = ["barcode"], unique = true)],
-)
+/**
+ * Plain data models stored in Firestore. Ids are Firestore document ids (String).
+ * All fields have defaults so Firestore can deserialize them, but we map manually
+ * in [AppRepository] to keep control over number/id handling.
+ */
 data class Product(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val barcode: String,
-    val name: String,
-    val price: Double,
+    val id: String = "",
+    val barcode: String = "",
+    val name: String = "",
+    val price: Double = 0.0,
     val createdAt: Long = 0,
 )
 
-/** A customer who can owe money (debts from orders) and make payments. */
-@Entity(tableName = "customers")
 data class Customer(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val name: String,
+    val id: String = "",
+    val name: String = "",
     val phone: String? = null,
     val note: String? = null,
     val createdAt: Long = 0,
 )
 
-/** A saved order (basket). Its [total] becomes part of the customer's debt. */
-@Entity(tableName = "orders")
-data class OrderEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val customerId: Long?,
-    val total: Double,
-    val itemCount: Int,
-    val note: String? = null,
-    val createdAt: Long = 0,
-)
-
-/** One line in an order. Stores a snapshot of name/price so history is stable. */
-@Entity(
-    tableName = "order_items",
-    indices = [Index(value = ["orderId"])],
-)
+/** One line inside an order (stored as a map in the order document). */
 data class OrderItem(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val orderId: Long,
-    val productId: Long?,
-    val barcode: String,
-    val name: String,
-    val price: Double,
-    val quantity: Int,
-    val lineTotal: Double,
+    val productId: String? = null,
+    val barcode: String = "",
+    val name: String = "",
+    val price: Double = 0.0,
+    val quantity: Int = 0,
+    val lineTotal: Double = 0.0,
 )
 
-/** A payment made by a customer, reducing their outstanding balance. */
-@Entity(
-    tableName = "payments",
-    indices = [Index(value = ["customerId"])],
+data class Order(
+    val id: String = "",
+    val customerId: String? = null,
+    val total: Double = 0.0,
+    val itemCount: Int = 0,
+    val note: String? = null,
+    val createdAt: Long = 0,
+    val items: List<OrderItem> = emptyList(),
 )
+
 data class Payment(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val customerId: Long,
-    val amount: Double,
+    val id: String = "",
+    val customerId: String = "",
+    val amount: Double = 0.0,
     val note: String? = null,
     val createdAt: Long = 0,
 )
 
-/** Projection: a customer row together with its computed outstanding balance. */
+/** Projection: a customer together with its computed outstanding balance. */
 data class CustomerRow(
-    val id: Long,
+    val id: String,
     val name: String,
     val phone: String?,
     val note: String?,
@@ -79,7 +61,7 @@ data class CustomerRow(
 
 /** Projection: an order together with its customer's name (null for a cash sale). */
 data class OrderRow(
-    val id: Long,
+    val id: String,
     val customerName: String?,
     val total: Double,
     val itemCount: Int,

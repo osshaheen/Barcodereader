@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 /** One basket line. Identity is the barcode, so re-scanning the same code increments quantity. */
 data class CartLine(
     val barcode: String,
-    val productId: Long?,
+    val productId: String?,
     val name: String,
     val price: Double,
     val quantity: Int,
@@ -28,7 +28,7 @@ data class NewOrderUiState(
     val lines: List<CartLine> = emptyList(),
     val awaitingProductFor: String? = null,   // unknown barcode waiting to be added as a product
     val torch: Boolean = false,
-    val savedOrderId: Long? = null,           // one-shot event: order persisted
+    val savedOrderId: String? = null,         // one-shot event: order persisted
 ) {
     val total: Double get() = lines.sumOf { it.lineTotal }
     val itemCount: Int get() = lines.sumOf { it.quantity }
@@ -43,7 +43,6 @@ class NewOrderViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Called by the camera for every newly seen code. */
     fun onScan(code: DetectedBarcode) {
-        // Ignore further scans while we're asking the user about an unknown barcode.
         if (_ui.value.awaitingProductFor != null) return
         viewModelScope.launch {
             val existing = repo.findProductByBarcode(code.value)
@@ -55,7 +54,7 @@ class NewOrderViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun addToCart(productId: Long?, barcode: String, name: String, price: Double) {
+    private fun addToCart(productId: String?, barcode: String, name: String, price: Double) {
         _ui.update { s ->
             val idx = s.lines.indexOfFirst { it.barcode == barcode }
             val lines = if (idx >= 0) {
@@ -127,7 +126,7 @@ class NewOrderViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Persist the basket as an order tied to [customerId] (null = cash sale, no debt). */
-    fun saveOrder(customerId: Long?, note: String?) {
+    fun saveOrder(customerId: String?, note: String?) {
         val lines = _ui.value.lines
         if (lines.isEmpty()) return
         viewModelScope.launch {

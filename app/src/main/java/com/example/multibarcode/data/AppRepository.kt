@@ -1,12 +1,17 @@
 package com.example.multibarcode.data
 
-import android.content.Context
-import androidx.room.withTransaction
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.tasks.await
 
 /** A single product line to persist when saving an order. */
 data class NewOrderItem(
-    val productId: Long?,
+    val productId: String?,
     val barcode: String,
     val name: String,
     val price: Double,
@@ -14,89 +19,196 @@ data class NewOrderItem(
 )
 
 /**
- * Thin façade over the Room DAOs. Centralises the few multi-step operations
- * (most importantly saving an order with its items in one transaction).
+ * Firestore-backed data access, scoped to the signed-in user:
+ * `users/{uid}/{products|customers|orders|payments}`.
+ *
+ * Firestore's on-device cache is enabled by default, so reads/writes keep working offline
+ * and sync automatically when the connection returns. Filtering, pagination and balance
+ * computation are done in memory by the ViewModels over these snapshot flows.
  */
-class AppRepository(private val db: AppDatabase) {
+class AppRepository {
 
-    private val products = db.productDao()
-    private val customers = db.customerDao()
-    private val orders = db.orderDao()
-    private val payments = db.paymentDao()
+    private val db = FirebaseFirestore.getInstance()
+    private val auth = FirebaseAuth.getInstance()
+
+    private fun col(name: String): CollectionReference? =
+        auth.currentUser?.uid?.let { db.collection("users").document(it).collection(name) }
+
+    // ---- Generic snapshot flow ------------------------------------------
+    private fun <T> collectionFlow(name: String, map: (DocumentSnapshot) -> T?): Flow<List<T>> =
+        callbackFlow {
+            val c = col(name)
+            if (c == null) {
+                trySend(emptyList())
+                awaitClose { }
+                return@callbackFlow
+            }
+            val registration = c.addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null) {
+                    trySend(emptyList())
+                } else {
+                    trySend(snapshot.documents.mapNotNull(map))
+                }
+            }
+            awaitClose { registration.remove() }
+        }
 
     // ---- Products ---------------------------------------------------------
-    fun productsFlow(): Flow<List<Product>> = products.all()
-    suspend fun productPage(q: String, limit: Int, offset: Int) = products.page(q, limit, offset)
-    suspend fun productCount(q: String) = products.count(q)
-    suspend fun findProductByBarcode(barcode: String) = products.findByBarcode(barcode)
-    suspend fun upsertProduct(product: Product): Long = products.upsert(product)
-    suspend fun deleteProduct(product: Product) = products.delete(product)
+    fun productsFlow(): Flow<List<Product>> = collectionFlow("products", ::toProduct)
+
+    suspend fun findProductByBarcode(barcode: String): Product? {
+        val c = col("products") ?: return null
+        return c.whereEqualTo("barcode", barcode).limit(1).get().await()
+            .documents.firstOrNull()?.let(::toProduct)
+    }
+
+    suspend fun upsertProduct(product: Product): String {
+        val c = col("products") ?: return ""
+        val data = mapOf(
+            "barcode" to product.barcode,
+            "name" to product.name,
+            "price" to product.price,
+            "createdAt" to product.createdAt,
+        )
+        return if (product.id.isBlank()) {
+            c.add(data).await().id
+        } else {
+            c.document(product.id).set(data).await(); product.id
+        }
+    }
+
+    suspend fun deleteProduct(product: Product) {
+        col("products")?.document(product.id)?.delete()?.await()
+    }
 
     // ---- Customers --------------------------------------------------------
-    fun customersFlow(): Flow<List<Customer>> = customers.all()
-    fun observeCustomer(id: Long): Flow<Customer?> = customers.observe(id)
-    fun customerPageFlow(q: String, filter: String, limit: Int, offset: Int) =
-        customers.pageFlow(q, filter, limit, offset)
-    fun customerCountFlow(q: String, filter: String) = customers.countFlow(q, filter)
-    suspend fun upsertCustomer(customer: Customer): Long = customers.upsert(customer)
-    suspend fun updateCustomer(customer: Customer) = customers.update(customer)
-    suspend fun deleteCustomer(customer: Customer) = customers.delete(customer)
+    fun customersFlow(): Flow<List<Customer>> = collectionFlow("customers", ::toCustomer)
+
+    suspend fun upsertCustomer(customer: Customer): String {
+        val c = col("customers") ?: return ""
+        val data = mapOf(
+            "name" to customer.name,
+            "phone" to customer.phone,
+            "note" to customer.note,
+            "createdAt" to customer.createdAt,
+        )
+        return if (customer.id.isBlank()) {
+            c.add(data).await().id
+        } else {
+            c.document(customer.id).set(data).await(); customer.id
+        }
+    }
+
+    suspend fun deleteCustomer(customer: Customer) {
+        col("customers")?.document(customer.id)?.delete()?.await()
+    }
 
     // ---- Orders -----------------------------------------------------------
-    fun ordersForCustomer(customerId: Long): Flow<List<OrderEntity>> =
-        orders.observeForCustomer(customerId)
-    fun ordersTotal(customerId: Long): Flow<Double> = orders.observeOrdersTotal(customerId)
-    suspend fun orderPageRows(limit: Int, offset: Int) = orders.pageRows(limit, offset)
-    suspend fun orderCount() = orders.count()
-    suspend fun orderItems(orderId: Long) = orders.itemsOf(orderId)
+    fun ordersFlow(): Flow<List<Order>> = collectionFlow("orders", ::toOrder)
 
-    /** Persist an order and all its lines in a single transaction. Returns the new order id. */
     suspend fun saveOrder(
-        customerId: Long?,
+        customerId: String?,
         note: String?,
         items: List<NewOrderItem>,
         now: Long,
-    ): Long = db.withTransaction {
-        val total = items.sumOf { it.price * it.quantity }
-        val orderId = orders.insertOrder(
-            OrderEntity(
-                customerId = customerId,
-                total = total,
-                itemCount = items.sumOf { it.quantity },
-                note = note,
-                createdAt = now,
+    ): String {
+        val c = col("orders") ?: return ""
+        val itemMaps = items.map {
+            mapOf(
+                "productId" to it.productId,
+                "barcode" to it.barcode,
+                "name" to it.name,
+                "price" to it.price,
+                "quantity" to it.quantity,
+                "lineTotal" to it.price * it.quantity,
             )
+        }
+        val data = mapOf(
+            "customerId" to customerId,
+            "total" to items.sumOf { it.price * it.quantity },
+            "itemCount" to items.sumOf { it.quantity },
+            "note" to note,
+            "createdAt" to now,
+            "items" to itemMaps,
         )
-        orders.insertItems(
-            items.map {
-                OrderItem(
-                    orderId = orderId,
-                    productId = it.productId,
-                    barcode = it.barcode,
-                    name = it.name,
-                    price = it.price,
-                    quantity = it.quantity,
-                    lineTotal = it.price * it.quantity,
-                )
-            }
-        )
-        orderId
+        return c.add(data).await().id
     }
 
     // ---- Payments ---------------------------------------------------------
-    fun paymentsForCustomer(customerId: Long): Flow<List<Payment>> =
-        payments.observeForCustomer(customerId)
-    fun paymentsTotal(customerId: Long): Flow<Double> = payments.observePaymentsTotal(customerId)
-    suspend fun addPayment(payment: Payment): Long = payments.insert(payment)
-    suspend fun deletePayment(payment: Payment) = payments.delete(payment)
+    fun paymentsFlow(): Flow<List<Payment>> = collectionFlow("payments", ::toPayment)
+
+    suspend fun addPayment(payment: Payment): String {
+        val c = col("payments") ?: return ""
+        val data = mapOf(
+            "customerId" to payment.customerId,
+            "amount" to payment.amount,
+            "note" to payment.note,
+            "createdAt" to payment.createdAt,
+        )
+        return c.add(data).await().id
+    }
+
+    suspend fun deletePayment(payment: Payment) {
+        col("payments")?.document(payment.id)?.delete()?.await()
+    }
+
+    // ---- Mapping ----------------------------------------------------------
+    private fun toProduct(d: DocumentSnapshot) = Product(
+        id = d.id,
+        barcode = d.getString("barcode") ?: "",
+        name = d.getString("name") ?: "",
+        price = d.getDouble("price") ?: 0.0,
+        createdAt = d.getLong("createdAt") ?: 0,
+    )
+
+    private fun toCustomer(d: DocumentSnapshot) = Customer(
+        id = d.id,
+        name = d.getString("name") ?: "",
+        phone = d.getString("phone"),
+        note = d.getString("note"),
+        createdAt = d.getLong("createdAt") ?: 0,
+    )
+
+    private fun toPayment(d: DocumentSnapshot) = Payment(
+        id = d.id,
+        customerId = d.getString("customerId") ?: "",
+        amount = d.getDouble("amount") ?: 0.0,
+        note = d.getString("note"),
+        createdAt = d.getLong("createdAt") ?: 0,
+    )
+
+    @Suppress("UNCHECKED_CAST")
+    private fun toOrder(d: DocumentSnapshot): Order {
+        val rawItems = d.get("items") as? List<Map<String, Any?>> ?: emptyList()
+        val items = rawItems.map { m ->
+            OrderItem(
+                productId = m["productId"] as? String,
+                barcode = m["barcode"] as? String ?: "",
+                name = m["name"] as? String ?: "",
+                price = (m["price"] as? Number)?.toDouble() ?: 0.0,
+                quantity = (m["quantity"] as? Number)?.toInt() ?: 0,
+                lineTotal = (m["lineTotal"] as? Number)?.toDouble() ?: 0.0,
+            )
+        }
+        return Order(
+            id = d.id,
+            customerId = d.getString("customerId"),
+            total = d.getDouble("total") ?: 0.0,
+            itemCount = d.getLong("itemCount")?.toInt() ?: 0,
+            note = d.getString("note"),
+            createdAt = d.getLong("createdAt") ?: 0,
+            items = items,
+        )
+    }
 
     companion object {
         @Volatile
         private var INSTANCE: AppRepository? = null
 
-        fun get(context: Context): AppRepository =
+        /** Kept taking a Context for call-site compatibility; Firebase uses the default app. */
+        fun get(context: Any? = null): AppRepository =
             INSTANCE ?: synchronized(this) {
-                INSTANCE ?: AppRepository(AppDatabase.get(context)).also { INSTANCE = it }
+                INSTANCE ?: AppRepository().also { INSTANCE = it }
             }
     }
 }

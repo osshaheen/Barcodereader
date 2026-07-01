@@ -128,7 +128,7 @@ fun EditCartLineDialog(
 /** Pick which customer the order belongs to (or a cash sale with no debt). */
 @Composable
 fun CustomerPickerDialog(
-    onPick: (customerId: Long?) -> Unit,
+    onPick: (customerId: String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current

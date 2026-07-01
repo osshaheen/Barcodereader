@@ -40,14 +40,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.example.multibarcode.data.OrderEntity
+import com.example.multibarcode.data.Order
 import com.example.multibarcode.data.Payment
 import com.example.multibarcode.util.Format
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CustomerDetailScreen(
-    customerId: Long,
+    customerId: String,
     onBack: () -> Unit,
 ) {
     val app = LocalContext.current.applicationContext as Application
@@ -161,7 +161,7 @@ private fun SectionTitle(text: String) {
 }
 
 @Composable
-private fun OrderRow(order: OrderEntity) {
+private fun OrderRow(order: Order) {
     Card(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             Column {
