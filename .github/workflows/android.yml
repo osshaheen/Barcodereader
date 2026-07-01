@@ -32,7 +32,7 @@ jobs:
 
       # Publish to a Release first — this is the reliable, direct download link.
       - name: Publish APK to a Release (direct download link)
-        if: github.ref_name == 'claude/multi-product-barcode-scanner-5m1cwg'
+        if: github.ref_name == 'master'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-debug
