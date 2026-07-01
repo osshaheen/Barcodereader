@@ -69,7 +69,7 @@ fun AdminScreen(
             if (requests.isEmpty()) {
                 item { Text("لا توجد طلبات معلّقة.") }
             } else {
-                items(requests, key = { it.email }) { req ->
+                items(requests, key = { "req-${it.email}" }) { req ->
                     Card(Modifier.fillMaxWidth()) {
                         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text(req.email, modifier = Modifier.weight(1f))
@@ -121,7 +121,7 @@ fun AdminScreen(
             if (allowlist.isEmpty()) {
                 item { Text("لا مستخدمين مضافين بعد.") }
             } else {
-                items(allowlist, key = { it.email }) { user ->
+                items(allowlist, key = { "allow-${it.email}" }) { user ->
                     Card(Modifier.fillMaxWidth()) {
                         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
