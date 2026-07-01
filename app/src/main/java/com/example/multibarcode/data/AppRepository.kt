@@ -35,9 +35,9 @@ class AppRepository(private val db: AppDatabase) {
     // ---- Customers --------------------------------------------------------
     fun customersFlow(): Flow<List<Customer>> = customers.all()
     fun observeCustomer(id: Long): Flow<Customer?> = customers.observe(id)
-    suspend fun customerPage(q: String, filter: String, limit: Int, offset: Int) =
-        customers.page(q, filter, limit, offset)
-    suspend fun customerCount(q: String, filter: String) = customers.count(q, filter)
+    fun customerPageFlow(q: String, filter: String, limit: Int, offset: Int) =
+        customers.pageFlow(q, filter, limit, offset)
+    fun customerCountFlow(q: String, filter: String) = customers.countFlow(q, filter)
     suspend fun upsertCustomer(customer: Customer): Long = customers.upsert(customer)
     suspend fun updateCustomer(customer: Customer) = customers.update(customer)
     suspend fun deleteCustomer(customer: Customer) = customers.delete(customer)

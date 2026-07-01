@@ -83,7 +83,7 @@ interface CustomerDao {
         LIMIT :limit OFFSET :offset
         """
     )
-    suspend fun page(q: String, filter: String, limit: Int, offset: Int): List<CustomerRow>
+    fun pageFlow(q: String, filter: String, limit: Int, offset: Int): Flow<List<CustomerRow>>
 
     @Query(
         """
@@ -100,7 +100,7 @@ interface CustomerDao {
            OR (:filter = 'SETTLED' AND balance <= 0.0)
         """
     )
-    suspend fun count(q: String, filter: String): Int
+    fun countFlow(q: String, filter: String): Flow<Int>
 }
 
 @Dao

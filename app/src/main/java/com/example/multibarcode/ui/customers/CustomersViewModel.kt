@@ -6,9 +6,13 @@ import androidx.lifecycle.viewModelScope
 import com.example.multibarcode.data.AppRepository
 import com.example.multibarcode.data.Customer
 import com.example.multibarcode.data.CustomerRow
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 enum class CustomerFilter(val key: String, val label: String) {
@@ -31,50 +35,53 @@ data class CustomersUiState(
     val canNext: Boolean get() = page < pageCount - 1
 }
 
+private data class Query(val q: String, val filter: CustomerFilter, val page: Int)
+
+@OptIn(ExperimentalCoroutinesApi::class)
 class CustomersViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = AppRepository.get(app)
+    private val pageSize = 12
 
-    private val _state = MutableStateFlow(CustomersUiState())
-    val state: StateFlow<CustomersUiState> = _state.asStateFlow()
+    private val queryFlow = MutableStateFlow(Query("", CustomerFilter.ALL, 0))
 
-    init { reload() }
+    /**
+     * Fully reactive: the list re-emits whenever the customers, orders **or payments** tables
+     * change, so a newly recorded payment immediately lowers the customer's balance here too.
+     */
+    val state: StateFlow<CustomersUiState> = queryFlow
+        .flatMapLatest { qy ->
+            repo.customerCountFlow(qy.q, qy.filter.key).flatMapLatest { total ->
+                val maxPage = if (total == 0) 0 else (total + pageSize - 1) / pageSize - 1
+                val page = qy.page.coerceIn(0, maxPage)
+                repo.customerPageFlow(qy.q, qy.filter.key, pageSize, page * pageSize)
+                    .map { items ->
+                        CustomersUiState(
+                            query = qy.q, filter = qy.filter, page = page,
+                            pageSize = pageSize, items = items, total = total,
+                        )
+                    }
+            }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = CustomersUiState(),
+        )
 
     fun setQuery(q: String) {
-        _state.value = _state.value.copy(query = q, page = 0)
-        reload()
+        queryFlow.value = queryFlow.value.copy(q = q, page = 0)
     }
 
     fun setFilter(f: CustomerFilter) {
-        _state.value = _state.value.copy(filter = f, page = 0)
-        reload()
+        queryFlow.value = queryFlow.value.copy(filter = f, page = 0)
     }
 
     fun nextPage() {
-        if (_state.value.canNext) {
-            _state.value = _state.value.copy(page = _state.value.page + 1)
-            reload()
-        }
+        if (state.value.canNext) queryFlow.value = queryFlow.value.copy(page = queryFlow.value.page + 1)
     }
 
     fun prevPage() {
-        if (_state.value.canPrev) {
-            _state.value = _state.value.copy(page = _state.value.page - 1)
-            reload()
-        }
-    }
-
-    fun reload() {
-        val s = _state.value
-        viewModelScope.launch {
-            _state.value = _state.value.copy(loading = true)
-            val total = repo.customerCount(s.query, s.filter.key)
-            val maxPage = if (total == 0) 0 else (total + s.pageSize - 1) / s.pageSize - 1
-            val page = s.page.coerceIn(0, maxPage)
-            val items = repo.customerPage(s.query, s.filter.key, s.pageSize, page * s.pageSize)
-            _state.value = _state.value.copy(
-                items = items, total = total, page = page, loading = false,
-            )
-        }
+        if (state.value.canPrev) queryFlow.value = queryFlow.value.copy(page = queryFlow.value.page - 1)
     }
 
     fun save(existingId: Long?, name: String, phone: String?, note: String?, createdAt: Long = 0) {
@@ -94,7 +101,6 @@ class CustomersViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 )
             }
-            reload()
         }
     }
 
@@ -103,7 +109,6 @@ class CustomersViewModel(app: Application) : AndroidViewModel(app) {
             repo.deleteCustomer(
                 Customer(id = row.id, name = row.name, phone = row.phone, note = row.note)
             )
-            reload()
         }
     }
 }
