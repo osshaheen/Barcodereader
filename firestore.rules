@@ -2,28 +2,35 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Super admin = the root owner, OR any allowlisted user flagged admin == true.
     function isSuperAdmin() {
-      return request.auth != null && request.auth.token.email == 'osahsh991@gmail.com';
+      return request.auth != null && (
+        request.auth.token.email == 'osahsh991@gmail.com'
+        || (
+          exists(/databases/$(database)/documents/allowlist/$(request.auth.token.email))
+          && get(/databases/$(database)/documents/allowlist/$(request.auth.token.email)).data.admin == true
+        )
+      );
     }
     function isAllowed() {
       return request.auth != null
         && exists(/databases/$(database)/documents/allowlist/$(request.auth.token.email));
     }
 
-    // Allowlist: anyone signed in may check it; only the super admin edits it.
+    // Allowlist: anyone signed in may read it; only a super admin edits it.
     match /allowlist/{email} {
       allow read: if request.auth != null;
       allow write: if isSuperAdmin();
     }
 
-    // Access requests: a signed-in user may file a request for their own email;
-    // only the super admin can view/approve/deny them.
+    // Access requests: a signed-in user may file one for their own email;
+    // only a super admin can view/approve/deny them.
     match /accessRequests/{email} {
       allow create: if request.auth != null && request.auth.token.email == email;
       allow read, update, delete: if isSuperAdmin();
     }
 
-    // App data: owner-only, and only if the super admin or an allowlisted user.
+    // App data: owner-only, and only for the super admin or an allowlisted user.
     match /users/{userId}/{document=**} {
       allow read, write: if request.auth != null
         && request.auth.uid == userId

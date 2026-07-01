@@ -5,6 +5,7 @@ import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -102,10 +103,10 @@ class AppRepository {
         batch.commit().await()
     }
 
-    /** True if [email] is present in the top-level `allowlist` collection (login gate). */
-    suspend fun isEmailAllowed(email: String): Boolean {
+    /** Login state for [email]: whether it's allowlisted and whether it's a super admin. */
+    suspend fun getAllowState(email: String): Pair<Boolean, Boolean> {
         val doc = db.collection("allowlist").document(email.trim().lowercase()).get().await()
-        return doc.exists()
+        return doc.exists() to (doc.getBoolean("admin") == true)
     }
 
     // ---- Access control (super-admin) ------------------------------------
@@ -118,8 +119,10 @@ class AppRepository {
             awaitClose { reg.remove() }
         }
 
-    fun allowlistFlow(): Flow<List<String>> =
-        topFlow(db.collection("allowlist")) { it.id }
+    fun allowlistFlow(): Flow<List<AllowedUser>> =
+        topFlow(db.collection("allowlist")) {
+            AllowedUser(email = it.id, admin = it.getBoolean("admin") == true)
+        }
 
     fun accessRequestsFlow(): Flow<List<AccessRequest>> =
         topFlow(db.collection("accessRequests")) {
@@ -127,8 +130,15 @@ class AppRepository {
         }
 
     suspend fun addAllowed(email: String) {
+        // Merge so re-adding an existing user never clears their admin flag.
         db.collection("allowlist").document(email.trim().lowercase())
-            .set(mapOf("addedAt" to System.currentTimeMillis())).await()
+            .set(mapOf("addedAt" to System.currentTimeMillis()), SetOptions.merge()).await()
+    }
+
+    /** Promote/demote an allowlisted user to super admin. */
+    suspend fun setAdmin(email: String, admin: Boolean) {
+        db.collection("allowlist").document(email.trim().lowercase())
+            .set(mapOf("admin" to admin), SetOptions.merge()).await()
     }
 
     suspend fun removeAllowed(email: String) {

@@ -69,9 +69,17 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
             _ui.value = AuthUiState(phase = AuthPhase.SIGNED_OUT, error = "تعذّر قراءة بريد الحساب")
             return
         }
-        val isAdmin = e == AuthRepository.SUPER_ADMIN_EMAIL
-        val allowed = try {
-            isAdmin || data.isEmailAllowed(e)
+        val isRoot = e == AuthRepository.SUPER_ADMIN_EMAIL
+        if (isRoot) {
+            _ui.value = AuthUiState(phase = AuthPhase.AUTHORIZED, isAdmin = true)
+            return
+        }
+        val allowed: Boolean
+        val isAdmin: Boolean
+        try {
+            val (a, admin) = data.getAllowState(e)
+            allowed = a
+            isAdmin = admin
         } catch (ex: Exception) {
             auth.signOut(getApplication())
             _ui.value = AuthUiState(phase = AuthPhase.SIGNED_OUT, error = "تعذّر التحقق من الصلاحية: ${ex.message}")

@@ -107,14 +107,33 @@ fun AdminScreen(
                     }
                 }
             }
+            // Root owner: always a super admin, cannot be changed or removed.
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(vm.rootAdminEmail, fontWeight = FontWeight.Bold)
+                            Text("المالك — سوبر أدمن", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
             if (allowlist.isEmpty()) {
-                item { Text("القائمة فارغة.") }
+                item { Text("لا مستخدمين مضافين بعد.") }
             } else {
-                items(allowlist, key = { it }) { email ->
+                items(allowlist, key = { it.email }) { user ->
                     Card(Modifier.fillMaxWidth()) {
                         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(email, modifier = Modifier.weight(1f))
-                            IconButton(onClick = { vm.remove(email) }) {
+                            Column(Modifier.weight(1f)) {
+                                Text(user.email)
+                                if (user.admin) {
+                                    Text("سوبر أدمن", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                            TextButton(onClick = { vm.setAdmin(user.email, !user.admin) }) {
+                                Text(if (user.admin) "إلغاء الأدمن" else "تعيين أدمن")
+                            }
+                            IconButton(onClick = { vm.remove(user.email) }) {
                                 Icon(Icons.Default.Delete, contentDescription = "حذف", tint = MaterialTheme.colorScheme.error)
                             }
                         }

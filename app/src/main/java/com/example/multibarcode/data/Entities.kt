@@ -67,6 +67,12 @@ data class AccessRequest(
     val requestedAt: Long,
 )
 
+/** An allowlisted user; [admin] means they are a super admin who can manage others. */
+data class AllowedUser(
+    val email: String,
+    val admin: Boolean,
+)
+
 /** Projection: an order together with its customer's name (null for a cash sale). */
 data class OrderRow(
     val id: String,
