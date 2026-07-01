@@ -9,6 +9,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
+import com.example.multibarcode.data.DailyBackupWorker
 import com.example.multibarcode.ui.AppNav
 import com.example.multibarcode.ui.theme.MultiBarcodeTheme
 
@@ -16,6 +17,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // Ensure the once-a-day automatic Excel backup is scheduled.
+        DailyBackupWorker.schedule(applicationContext)
         setContent {
             MultiBarcodeTheme {
                 // The whole app is Arabic, so lay everything out right-to-left.

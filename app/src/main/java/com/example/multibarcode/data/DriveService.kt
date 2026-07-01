@@ -48,28 +48,57 @@ object DriveService {
 
     /** Upload JPEG [bytes] to [storageEmail]'s Drive, make it public, return the file id (or null). */
     suspend fun uploadJpeg(context: Context, storageEmail: String, name: String, bytes: ByteArray): String? =
+        uploadBytes(context, storageEmail, name, "image/jpeg", bytes)
+
+    /**
+     * Upload arbitrary [bytes] with [mimeType] to [storageEmail]'s Drive, make it public, and
+     * return the new file id (or null on failure). Optionally place it inside [parentFolderId].
+     */
+    suspend fun uploadBytes(
+        context: Context,
+        storageEmail: String,
+        name: String,
+        mimeType: String,
+        bytes: ByteArray,
+        parentFolderId: String? = null,
+    ): String? = withContext(Dispatchers.IO) {
+        try {
+            val token = tokenFor(context, storageEmail)
+            val meta = JSONObject().put("name", name)
+            if (parentFolderId != null) meta.put("parents", org.json.JSONArray().put(parentFolderId))
+            val body = MultipartBody.Builder()
+                .setType("multipart/related".toMediaType())
+                .addPart(meta.toString().toRequestBody("application/json; charset=UTF-8".toMediaType()))
+                .addPart(bytes.toRequestBody(mimeType.toMediaType()))
+                .build()
+            val request = Request.Builder()
+                .url("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
+                .addHeader("Authorization", "Bearer $token")
+                .post(body)
+                .build()
+            val id = client.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) return@withContext null
+                resp.body?.string()?.let { JSONObject(it).optString("id") }?.takeIf { it.isNotBlank() }
+            } ?: return@withContext null
+            makePublic(token, id)
+            id
+        } catch (e: NeedsConsent) {
+            null // consent must be granted from Settings; treated as a failed upload here
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** Download a public (by-link) Drive file's raw bytes; no auth needed. */
+    suspend fun downloadPublic(fileId: String): ByteArray? =
         withContext(Dispatchers.IO) {
             try {
-                val token = tokenFor(context, storageEmail)
-                val metadata = JSONObject().put("name", name).toString()
-                val body = MultipartBody.Builder()
-                    .setType("multipart/related".toMediaType())
-                    .addPart(metadata.toRequestBody("application/json; charset=UTF-8".toMediaType()))
-                    .addPart(bytes.toRequestBody("image/jpeg".toMediaType()))
-                    .build()
                 val request = Request.Builder()
-                    .url("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
-                    .addHeader("Authorization", "Bearer $token")
-                    .post(body)
-                    .build()
-                val id = client.newCall(request).execute().use { resp ->
-                    if (!resp.isSuccessful) return@withContext null
-                    resp.body?.string()?.let { JSONObject(it).optString("id") }?.takeIf { it.isNotBlank() }
-                } ?: return@withContext null
-                makePublic(token, id)
-                id
-            } catch (e: NeedsConsent) {
-                null // consent must be granted from Settings; treated as a failed upload here
+                    .url("https://drive.google.com/uc?export=download&id=$fileId")
+                    .get().build()
+                client.newCall(request).execute().use { resp ->
+                    if (!resp.isSuccessful) null else resp.body?.bytes()
+                }
             } catch (e: Exception) {
                 null
             }

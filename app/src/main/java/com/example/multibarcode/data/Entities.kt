@@ -81,3 +81,19 @@ data class OrderRow(
     val itemCount: Int,
     val createdAt: Long,
 )
+
+/**
+ * A record of a saved Excel backup file living on the storage Drive.
+ * [kind] is "customer" (reset/manual per-customer) or "daily" (full snapshot).
+ */
+data class BackupRecord(
+    val id: String = "",
+    val fileId: String = "",
+    val fileName: String = "",
+    val customerId: String? = null,
+    val customerName: String? = null,
+    val kind: String = "customer",
+    val fromDate: Long = 0,
+    val toDate: Long = 0,
+    val createdAt: Long = 0,
+)

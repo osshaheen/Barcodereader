@@ -16,6 +16,7 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.AddShoppingCart
+import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.People
@@ -52,6 +53,7 @@ fun HomeScreen(
     isAdmin: Boolean,
     onAdmin: () -> Unit,
     onUpload: () -> Unit,
+    onBackup: () -> Unit,
     vm: HomeViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
 ) {
     val pendingCount by vm.pendingCount.collectAsStateWithLifecycle()
@@ -61,6 +63,7 @@ fun HomeScreen(
         add(HomeItem("الزبائن", Icons.Default.People, onCustomers))
         add(HomeItem("الطلبيات", Icons.AutoMirrored.Filled.ReceiptLong, onOrders))
         add(HomeItem("الماسح المباشر", Icons.Default.QrCodeScanner, onLiveScan))
+        add(HomeItem("النسخ الاحتياطية", Icons.Default.Backup, onBackup))
         if (isAdmin) add(HomeItem("إدارة الصلاحيات", Icons.Default.AdminPanelSettings, onAdmin))
     }
 

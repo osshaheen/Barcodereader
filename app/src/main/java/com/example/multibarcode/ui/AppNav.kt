@@ -10,6 +10,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.multibarcode.ui.admin.AdminScreen
+import com.example.multibarcode.ui.backup.BackupScreen
 import com.example.multibarcode.ui.auth.AuthPhase
 import com.example.multibarcode.ui.auth.AuthViewModel
 import com.example.multibarcode.ui.auth.LoginScreen
@@ -34,6 +35,7 @@ object Routes {
     const val BULK_ADD = "bulkAdd"
     const val ADMIN = "admin"
     const val UPLOAD = "upload"
+    const val BACKUP = "backup"
 
     fun customerDetail(id: String) = "$CUSTOMER_DETAIL/$id"
 }
@@ -66,10 +68,14 @@ private fun MainNav(onSignOut: () -> Unit, isAdmin: Boolean) {
                 isAdmin = isAdmin,
                 onAdmin = { nav.navigate(Routes.ADMIN) },
                 onUpload = { nav.navigate(Routes.UPLOAD) },
+                onBackup = { nav.navigate(Routes.BACKUP) },
             )
         }
         composable(Routes.ADMIN) {
             AdminScreen(onBack = { nav.popBackStack() })
+        }
+        composable(Routes.BACKUP) {
+            BackupScreen(onBack = { nav.popBackStack() })
         }
         composable(Routes.UPLOAD) {
             UploadScreen(onBack = { nav.popBackStack() })

@@ -2,6 +2,9 @@ package com.example.multibarcode.data
 
 import android.content.Context
 import com.example.multibarcode.util.Connectivity
+import com.example.multibarcode.util.XlsxReader
+import com.example.multibarcode.util.XlsxWriter
+import com.example.multibarcode.util.Format
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentSnapshot
@@ -25,6 +28,9 @@ data class NewOrderItem(
     val price: Double,
     val quantity: Int,
 )
+
+/** Outcome of a backup/reset operation, with a user-facing Arabic message. */
+data class BackupResult(val ok: Boolean, val message: String)
 
 /**
  * Firestore-backed data access, scoped to the signed-in user:
@@ -443,6 +449,143 @@ class AppRepository(private val appContext: Context) {
         is JSONArray -> (0 until value.length()).map { unwrap(value.get(it)) }
         JSONObject.NULL -> null
         else -> value
+    }
+
+    // ---- Backups (Excel files on the storage Drive) -----------------------
+
+    /** Records of every saved backup file, newest first. */
+    fun backupsFlow(): Flow<List<BackupRecord>> =
+        collectionFlow("backups", ::toBackup).map { list -> list.sortedByDescending { it.createdAt } }
+
+    private fun toBackup(d: DocumentSnapshot) = BackupRecord(
+        id = d.id,
+        fileId = d.getString("fileId") ?: "",
+        fileName = d.getString("fileName") ?: "",
+        customerId = d.getString("customerId"),
+        customerName = d.getString("customerName"),
+        kind = d.getString("kind") ?: "customer",
+        fromDate = d.getLong("fromDate") ?: 0,
+        toDate = d.getLong("toDate") ?: 0,
+        createdAt = d.getLong("createdAt") ?: 0,
+    )
+
+    private suspend fun fetchCustomerOrders(customerId: String): List<Order> =
+        col("orders")?.whereEqualTo("customerId", customerId)?.get()?.await()
+            ?.documents?.map(::toOrder)?.sortedBy { it.createdAt } ?: emptyList()
+
+    private suspend fun fetchCustomerPayments(customerId: String): List<Payment> =
+        col("payments")?.whereEqualTo("customerId", customerId)?.get()?.await()
+            ?.documents?.map(::toPayment)?.sortedBy { it.createdAt } ?: emptyList()
+
+    private fun sanitizeFileName(s: String): String =
+        s.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim().ifBlank { "غير_مسمى" }
+
+    /** Build the per-customer workbook (summary + orders + payments sheets). */
+    private fun buildCustomerWorkbook(customer: Customer, orders: List<Order>, payments: List<Payment>): ByteArray {
+        val ordersTotal = orders.sumOf { it.total }
+        val paymentsTotal = payments.sumOf { it.amount }
+        val summary = XlsxWriter.Sheet(
+            "ملخص",
+            listOf(
+                listOf("الزبون", customer.name),
+                listOf("الهاتف", customer.phone ?: ""),
+                listOf("إجمالي الطلبيات", Format.money(ordersTotal)),
+                listOf("إجمالي المدفوعات", Format.money(paymentsTotal)),
+                listOf("الرصيد المتبقي", Format.money(ordersTotal - paymentsTotal)),
+                listOf("عدد الطلبيات", orders.size.toString()),
+                listOf("عدد المدفوعات", payments.size.toString()),
+            ),
+        )
+        val orderRows = ArrayList<List<String>>()
+        orderRows.add(listOf("رقم الطلبية", "التاريخ", "الصنف", "الباركود", "السعر", "الكمية", "إجمالي السطر"))
+        for (o in orders) {
+            if (o.items.isEmpty()) {
+                orderRows.add(listOf(o.id, Format.dateTime(o.createdAt), "", "", "", "", Format.money(o.total)))
+            } else {
+                o.items.forEach { it2 ->
+                    orderRows.add(
+                        listOf(
+                            o.id, Format.dateTime(o.createdAt), it2.name, it2.barcode,
+                            Format.money(it2.price), it2.quantity.toString(), Format.money(it2.lineTotal),
+                        )
+                    )
+                }
+            }
+        }
+        val paymentRows = ArrayList<List<String>>()
+        paymentRows.add(listOf("التاريخ", "المبلغ", "ملاحظة"))
+        payments.forEach { p -> paymentRows.add(listOf(Format.dateTime(p.createdAt), Format.money(p.amount), p.note ?: "")) }
+        return XlsxWriter.build(listOf(summary, XlsxWriter.Sheet("الطلبيات", orderRows), XlsxWriter.Sheet("المدفوعات", paymentRows)))
+    }
+
+    private fun dayStamp(ms: Long): String = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date(ms))
+
+    /**
+     * Build an Excel backup of one customer's uploaded orders/payments, upload it to the storage
+     * Drive, and record it in the `backups` collection. Does NOT delete anything.
+     */
+    suspend fun backupCustomer(customerId: String, kind: String = "customer"): BackupResult {
+        if (!online()) return BackupResult(false, "لا يوجد اتصال بالإنترنت — النسخ الاحتياطي يتطلب اتصالاً.")
+        val storageEmail = getStorageDriveEmail()
+            ?: return BackupResult(false, "لم يتم تعيين حساب Google Drive للتخزين من شاشة الإدارة.")
+        val customer = col("customers")?.document(customerId)?.get()?.await()?.let(::toCustomer)
+            ?: return BackupResult(false, "الزبون غير موجود على الخادم (قد يكون غير مرفوع بعد).")
+        val orders = fetchCustomerOrders(customerId)
+        val payments = fetchCustomerPayments(customerId)
+        if (orders.isEmpty() && payments.isEmpty()) {
+            return BackupResult(false, "لا توجد بيانات مرفوعة لهذا الزبون لأخذ نسخة منها.")
+        }
+        val dates = (orders.map { it.createdAt } + payments.map { it.createdAt }).filter { it > 0 }
+        val from = dates.minOrNull() ?: System.currentTimeMillis()
+        val to = dates.maxOrNull() ?: System.currentTimeMillis()
+        val bytes = buildCustomerWorkbook(customer, orders, payments)
+        val fileName = "${sanitizeFileName(customer.name)}_${dayStamp(from)}_${dayStamp(to)}.xlsx"
+        val fileId = DriveService.uploadBytes(
+            appContext, storageEmail, fileName,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes,
+        ) ?: return BackupResult(false, "فشل رفع الملف إلى Drive. تأكد من صلاحية حساب التخزين من شاشة الإدارة.")
+        col("backups")?.add(
+            mapOf(
+                "fileId" to fileId, "fileName" to fileName,
+                "customerId" to customerId, "customerName" to customer.name,
+                "kind" to kind, "fromDate" to from, "toDate" to to,
+                "createdAt" to System.currentTimeMillis(),
+            )
+        )?.await()
+        return BackupResult(true, "تم حفظ النسخة الاحتياطية: $fileName")
+    }
+
+    /** Take a backup, then delete every uploaded order/payment for this customer ("تصفير الحساب"). */
+    suspend fun resetCustomer(customerId: String): BackupResult {
+        val backup = backupCustomer(customerId, kind = "reset")
+        // Only wipe when we actually secured a backup (or there was genuinely nothing to back up).
+        val nothingToBackup = !backup.ok && backup.message.contains("لا توجد بيانات")
+        if (!backup.ok && !nothingToBackup) return backup
+        val orders = col("orders")?.whereEqualTo("customerId", customerId)?.get()?.await()?.documents ?: emptyList()
+        val payments = col("payments")?.whereEqualTo("customerId", customerId)?.get()?.await()?.documents ?: emptyList()
+        orders.forEach { it.reference.delete().await() }
+        payments.forEach { it.reference.delete().await() }
+        return BackupResult(true, "تم تصفير حساب الزبون بعد حفظ نسخة احتياطية.")
+    }
+
+    /** Full backup: one Excel file per customer that has data. Used for the daily/manual full backup. */
+    suspend fun backupAll(): BackupResult {
+        if (!online()) return BackupResult(false, "لا يوجد اتصال بالإنترنت.")
+        val customers = col("customers")?.get()?.await()?.documents?.map(::toCustomer) ?: emptyList()
+        if (customers.isEmpty()) return BackupResult(false, "لا يوجد زبائن لأخذ نسخة منهم.")
+        var saved = 0
+        for (c in customers) {
+            val r = backupCustomer(c.id, kind = "daily")
+            if (r.ok) saved++
+        }
+        return if (saved > 0) BackupResult(true, "تم حفظ نسخة احتياطية لعدد $saved زبون.")
+        else BackupResult(false, "لا توجد بيانات مرفوعة لأخذ نسخة منها.")
+    }
+
+    /** Download and parse a backup's Excel file into sheets for the archive viewer. */
+    suspend fun readBackup(record: BackupRecord): List<XlsxReader.Sheet>? {
+        val bytes = DriveService.downloadPublic(record.fileId) ?: return null
+        return runCatching { XlsxReader.read(bytes) }.getOrNull()
     }
 
     companion object {
