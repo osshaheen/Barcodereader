@@ -11,6 +11,8 @@ import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 import org.json.JSONArray
 import org.json.JSONObject
@@ -43,18 +45,14 @@ class AppRepository(private val appContext: Context) {
 
     private fun online() = Connectivity.isOnline(appContext)
 
-    /** Either write [data] to Firestore now (online) or queue it in the local outbox (offline). */
-    private suspend fun writeOrQueue(collection: String, label: String, data: Map<String, Any?>, now: Long): Boolean {
-        return if (online()) {
-            col(collection)?.add(data)?.await()
-            true // uploaded
-        } else {
-            outbox.insert(
-                PendingOp(type = collection, label = label, payload = mapToJson(data), createdAt = now)
-            )
-            false // queued locally
-        }
+    /** Always queue new records locally; they upload only when the user presses "upload". */
+    private suspend fun queueWrite(collection: String, label: String, data: Map<String, Any?>, now: Long) {
+        outbox.insert(PendingOp(type = collection, label = label, payload = mapToJson(data), createdAt = now))
     }
+
+    /** A typed view of pending (not-yet-uploaded) records of one collection. */
+    private fun <T> pendingTyped(type: String, map: (PendingOp) -> T?): Flow<List<T>> =
+        outbox.observeAll().map { ops -> ops.filter { it.type == type }.mapNotNull(map) }
 
     // ---- Generic snapshot flow ------------------------------------------
     private fun <T> collectionFlow(name: String, map: (DocumentSnapshot) -> T?): Flow<List<T>> =
@@ -76,7 +74,8 @@ class AppRepository(private val appContext: Context) {
         }
 
     // ---- Products ---------------------------------------------------------
-    fun productsFlow(): Flow<List<Product>> = collectionFlow("products", ::toProduct)
+    fun productsFlow(): Flow<List<Product>> =
+        combine(collectionFlow("products", ::toProduct), pendingTyped("products", ::opToProduct)) { a, b -> a + b }
 
     suspend fun findProductByBarcode(barcode: String): Product? {
         val c = col("products") ?: return null
@@ -93,12 +92,8 @@ class AppRepository(private val appContext: Context) {
             "imageFileId" to product.imageFileId,
         )
         return if (product.id.isBlank()) {
-            if (online()) {
-                col("products")?.add(data)?.await()?.id ?: ""
-            } else {
-                outbox.insert(PendingOp("products", "منتج — ${product.name}", mapToJson(data), product.createdAt))
-                "local-${product.createdAt}"
-            }
+            queueWrite("products", "منتج — ${product.name}", data, product.createdAt)
+            "local-${product.createdAt}"
         } else {
             col("products")?.document(product.id)?.set(data)?.await(); product.id
         }
@@ -203,7 +198,8 @@ class AppRepository(private val appContext: Context) {
     }
 
     // ---- Customers --------------------------------------------------------
-    fun customersFlow(): Flow<List<Customer>> = collectionFlow("customers", ::toCustomer)
+    fun customersFlow(): Flow<List<Customer>> =
+        combine(collectionFlow("customers", ::toCustomer), pendingTyped("customers", ::opToCustomer)) { a, b -> a + b }
 
     suspend fun upsertCustomer(customer: Customer): String {
         val data = mapOf(
@@ -213,7 +209,7 @@ class AppRepository(private val appContext: Context) {
             "createdAt" to customer.createdAt,
         )
         return if (customer.id.isBlank()) {
-            writeOrQueue("customers", "زبون — ${customer.name}", data, customer.createdAt)
+            queueWrite("customers", "زبون — ${customer.name}", data, customer.createdAt)
             "saved"
         } else {
             // Edits target an existing Firestore doc (kept online).
@@ -226,7 +222,8 @@ class AppRepository(private val appContext: Context) {
     }
 
     // ---- Orders -----------------------------------------------------------
-    fun ordersFlow(): Flow<List<Order>> = collectionFlow("orders", ::toOrder)
+    fun ordersFlow(): Flow<List<Order>> =
+        combine(collectionFlow("orders", ::toOrder), pendingTyped("orders", ::opToOrder)) { a, b -> a + b }
 
     suspend fun saveOrder(
         customerId: String?,
@@ -252,12 +249,13 @@ class AppRepository(private val appContext: Context) {
             "createdAt" to now,
             "items" to itemMaps,
         )
-        writeOrQueue("orders", "طلبية — ${items.sumOf { it.quantity }} صنف", data, now)
+        queueWrite("orders", "طلبية — ${items.sumOf { it.quantity }} صنف", data, now)
         return "saved"
     }
 
     // ---- Payments ---------------------------------------------------------
-    fun paymentsFlow(): Flow<List<Payment>> = collectionFlow("payments", ::toPayment)
+    fun paymentsFlow(): Flow<List<Payment>> =
+        combine(collectionFlow("payments", ::toPayment), pendingTyped("payments", ::opToPayment)) { a, b -> a + b }
 
     suspend fun addPayment(payment: Payment): String {
         val data = mapOf(
@@ -266,13 +264,73 @@ class AppRepository(private val appContext: Context) {
             "note" to payment.note,
             "createdAt" to payment.createdAt,
         )
-        writeOrQueue("payments", "دفعة — ${payment.amount}", data, payment.createdAt)
+        queueWrite("payments", "دفعة — ${payment.amount}", data, payment.createdAt)
         return "saved"
     }
 
     suspend fun deletePayment(payment: Payment) {
         col("payments")?.document(payment.id)?.delete()?.await()
     }
+
+    // ---- Pending-op -> model mapping (for showing local data before upload) ----
+    private fun opToProduct(op: PendingOp): Product? = runCatching {
+        val m = jsonToMap(op.payload)
+        Product(
+            id = "local-${op.id}",
+            barcode = m["barcode"] as? String ?: "",
+            name = m["name"] as? String ?: "",
+            price = (m["price"] as? Number)?.toDouble() ?: 0.0,
+            createdAt = (m["createdAt"] as? Number)?.toLong() ?: op.createdAt,
+            imageFileId = m["imageFileId"] as? String,
+        )
+    }.getOrNull()
+
+    private fun opToCustomer(op: PendingOp): Customer? = runCatching {
+        val m = jsonToMap(op.payload)
+        Customer(
+            id = "local-${op.id}",
+            name = m["name"] as? String ?: "",
+            phone = m["phone"] as? String,
+            note = m["note"] as? String,
+            createdAt = (m["createdAt"] as? Number)?.toLong() ?: op.createdAt,
+        )
+    }.getOrNull()
+
+    private fun opToPayment(op: PendingOp): Payment? = runCatching {
+        val m = jsonToMap(op.payload)
+        Payment(
+            id = "local-${op.id}",
+            customerId = m["customerId"] as? String ?: "",
+            amount = (m["amount"] as? Number)?.toDouble() ?: 0.0,
+            note = m["note"] as? String,
+            createdAt = (m["createdAt"] as? Number)?.toLong() ?: op.createdAt,
+        )
+    }.getOrNull()
+
+    @Suppress("UNCHECKED_CAST")
+    private fun opToOrder(op: PendingOp): Order? = runCatching {
+        val m = jsonToMap(op.payload)
+        val rawItems = m["items"] as? List<Map<String, Any?>> ?: emptyList()
+        val items = rawItems.map { im ->
+            OrderItem(
+                productId = im["productId"] as? String,
+                barcode = im["barcode"] as? String ?: "",
+                name = im["name"] as? String ?: "",
+                price = (im["price"] as? Number)?.toDouble() ?: 0.0,
+                quantity = (im["quantity"] as? Number)?.toInt() ?: 0,
+                lineTotal = (im["lineTotal"] as? Number)?.toDouble() ?: 0.0,
+            )
+        }
+        Order(
+            id = "local-${op.id}",
+            customerId = m["customerId"] as? String,
+            total = (m["total"] as? Number)?.toDouble() ?: 0.0,
+            itemCount = (m["itemCount"] as? Number)?.toInt() ?: 0,
+            note = m["note"] as? String,
+            createdAt = (m["createdAt"] as? Number)?.toLong() ?: op.createdAt,
+            items = items,
+        )
+    }.getOrNull()
 
     // ---- Mapping ----------------------------------------------------------
     private fun toProduct(d: DocumentSnapshot) = Product(
