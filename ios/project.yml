@@ -2,7 +2,7 @@ name: MultiBarcode
 options:
   bundleIdPrefix: com.baghd
   deploymentTarget:
-    iOS: "15.0"
+    iOS: "16.0"
   developmentLanguage: ar
   # Keep the pbxproj readable by a range of Xcode versions on the CI runner.
   objectVersion: 56
