@@ -4,6 +4,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -105,6 +106,49 @@ class AppRepository {
     suspend fun isEmailAllowed(email: String): Boolean {
         val doc = db.collection("allowlist").document(email.trim().lowercase()).get().await()
         return doc.exists()
+    }
+
+    // ---- Access control (super-admin) ------------------------------------
+    private fun <T> topFlow(query: Query, map: (DocumentSnapshot) -> T?): Flow<List<T>> =
+        callbackFlow {
+            val reg = query.addSnapshotListener { snap, err ->
+                if (err != null || snap == null) trySend(emptyList())
+                else trySend(snap.documents.mapNotNull(map))
+            }
+            awaitClose { reg.remove() }
+        }
+
+    fun allowlistFlow(): Flow<List<String>> =
+        topFlow(db.collection("allowlist")) { it.id }
+
+    fun accessRequestsFlow(): Flow<List<AccessRequest>> =
+        topFlow(db.collection("accessRequests")) {
+            AccessRequest(email = it.id, requestedAt = it.getLong("requestedAt") ?: 0)
+        }
+
+    suspend fun addAllowed(email: String) {
+        db.collection("allowlist").document(email.trim().lowercase())
+            .set(mapOf("addedAt" to System.currentTimeMillis())).await()
+    }
+
+    suspend fun removeAllowed(email: String) {
+        db.collection("allowlist").document(email.trim().lowercase()).delete().await()
+    }
+
+    /** Record a login attempt by a non-allowlisted user so the admin can approve it. */
+    suspend fun createAccessRequest(email: String) {
+        val e = email.trim().lowercase()
+        db.collection("accessRequests").document(e)
+            .set(mapOf("email" to e, "requestedAt" to System.currentTimeMillis())).await()
+    }
+
+    suspend fun approveRequest(email: String) {
+        addAllowed(email)
+        db.collection("accessRequests").document(email.trim().lowercase()).delete().await()
+    }
+
+    suspend fun denyRequest(email: String) {
+        db.collection("accessRequests").document(email.trim().lowercase()).delete().await()
     }
 
     // ---- Customers --------------------------------------------------------

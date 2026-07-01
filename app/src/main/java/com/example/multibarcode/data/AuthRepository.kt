@@ -50,6 +50,9 @@ class AuthRepository {
     }
 
     companion object {
+        /** Primary super-admin: always allowed to sign in and manage the allowlist. */
+        const val SUPER_ADMIN_EMAIL = "osahsh991@gmail.com"
+
         @Volatile
         private var INSTANCE: AuthRepository? = null
 

@@ -61,6 +61,12 @@ data class CustomerRow(
     val balance: Double,
 )
 
+/** A pending login request from a non-allowlisted user, shown to the super admin. */
+data class AccessRequest(
+    val email: String,
+    val requestedAt: Long,
+)
+
 /** Projection: an order together with its customer's name (null for a cash sale). */
 data class OrderRow(
     val id: String,

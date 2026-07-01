@@ -9,6 +9,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.multibarcode.ui.admin.AdminScreen
 import com.example.multibarcode.ui.auth.AuthPhase
 import com.example.multibarcode.ui.auth.AuthViewModel
 import com.example.multibarcode.ui.auth.LoginScreen
@@ -30,6 +31,7 @@ object Routes {
     const val ORDERS = "orders"
     const val LIVE_SCAN = "liveScan"
     const val BULK_ADD = "bulkAdd"
+    const val ADMIN = "admin"
 
     fun customerDetail(id: String) = "$CUSTOMER_DETAIL/$id"
 }
@@ -40,14 +42,14 @@ fun AppNav() {
     val ui by authVm.ui.collectAsStateWithLifecycle()
 
     if (ui.phase == AuthPhase.AUTHORIZED) {
-        MainNav(onSignOut = { authVm.signOut() })
+        MainNav(onSignOut = { authVm.signOut() }, isAdmin = ui.isAdmin)
     } else {
         LoginScreen(vm = authVm)
     }
 }
 
 @Composable
-private fun MainNav(onSignOut: () -> Unit) {
+private fun MainNav(onSignOut: () -> Unit, isAdmin: Boolean) {
     val nav = rememberNavController()
 
     NavHost(navController = nav, startDestination = Routes.HOME) {
@@ -59,7 +61,12 @@ private fun MainNav(onSignOut: () -> Unit) {
                 onOrders = { nav.navigate(Routes.ORDERS) },
                 onLiveScan = { nav.navigate(Routes.LIVE_SCAN) },
                 onSignOut = onSignOut,
+                isAdmin = isAdmin,
+                onAdmin = { nav.navigate(Routes.ADMIN) },
             )
+        }
+        composable(Routes.ADMIN) {
+            AdminScreen(onBack = { nav.popBackStack() })
         }
         composable(Routes.PRODUCTS) {
             ProductsScreen(

@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
+import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.AddShoppingCart
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.People
@@ -45,14 +46,17 @@ fun HomeScreen(
     onOrders: () -> Unit,
     onLiveScan: () -> Unit,
     onSignOut: () -> Unit,
+    isAdmin: Boolean,
+    onAdmin: () -> Unit,
 ) {
-    val items = listOf(
-        HomeItem("طلبية جديدة", Icons.Default.AddShoppingCart, onNewOrder),
-        HomeItem("المنتجات", Icons.Default.Inventory2, onProducts),
-        HomeItem("الزبائن", Icons.Default.People, onCustomers),
-        HomeItem("الطلبيات", Icons.AutoMirrored.Filled.ReceiptLong, onOrders),
-        HomeItem("الماسح المباشر", Icons.Default.QrCodeScanner, onLiveScan),
-    )
+    val items = buildList {
+        add(HomeItem("طلبية جديدة", Icons.Default.AddShoppingCart, onNewOrder))
+        add(HomeItem("المنتجات", Icons.Default.Inventory2, onProducts))
+        add(HomeItem("الزبائن", Icons.Default.People, onCustomers))
+        add(HomeItem("الطلبيات", Icons.AutoMirrored.Filled.ReceiptLong, onOrders))
+        add(HomeItem("الماسح المباشر", Icons.Default.QrCodeScanner, onLiveScan))
+        if (isAdmin) add(HomeItem("إدارة الصلاحيات", Icons.Default.AdminPanelSettings, onAdmin))
+    }
 
     Scaffold(
         topBar = {

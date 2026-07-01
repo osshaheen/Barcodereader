@@ -17,6 +17,7 @@ data class AuthUiState(
     val phase: AuthPhase = AuthPhase.LOADING,
     val loading: Boolean = false,
     val error: String? = null,
+    val isAdmin: Boolean = false,
 )
 
 class AuthViewModel(app: Application) : AndroidViewModel(app) {
@@ -62,21 +63,29 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun verifyAllowed(email: String?) {
-        val allowed = try {
-            email != null && data.isEmailAllowed(email)
-        } catch (e: Exception) {
-            // Network/permission issue reading the allowlist.
+        val e = email?.trim()?.lowercase()
+        if (e == null) {
             auth.signOut(getApplication())
-            _ui.value = AuthUiState(phase = AuthPhase.SIGNED_OUT, error = "تعذّر التحقق من الصلاحية: ${e.message}")
+            _ui.value = AuthUiState(phase = AuthPhase.SIGNED_OUT, error = "تعذّر قراءة بريد الحساب")
+            return
+        }
+        val isAdmin = e == AuthRepository.SUPER_ADMIN_EMAIL
+        val allowed = try {
+            isAdmin || data.isEmailAllowed(e)
+        } catch (ex: Exception) {
+            auth.signOut(getApplication())
+            _ui.value = AuthUiState(phase = AuthPhase.SIGNED_OUT, error = "تعذّر التحقق من الصلاحية: ${ex.message}")
             return
         }
         if (allowed) {
-            _ui.value = AuthUiState(phase = AuthPhase.AUTHORIZED)
+            _ui.value = AuthUiState(phase = AuthPhase.AUTHORIZED, isAdmin = isAdmin)
         } else {
+            // Record a pending request for the admin, then sign out.
+            try { data.createAccessRequest(e) } catch (_: Exception) {}
             auth.signOut(getApplication())
             _ui.value = AuthUiState(
                 phase = AuthPhase.SIGNED_OUT,
-                error = "البريد ${email ?: ""} غير مصرّح له بالدخول",
+                error = "البريد $e غير مصرّح له بعد. تم إرسال طلبك للمشرف للموافقة.",
             )
         }
     }
