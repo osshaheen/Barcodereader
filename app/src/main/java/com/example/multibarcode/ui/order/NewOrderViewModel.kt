@@ -1,6 +1,8 @@
 package com.example.multibarcode.ui.order
 
 import android.app.Application
+import android.media.AudioManager
+import android.media.ToneGenerator
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.multibarcode.DetectedBarcode
@@ -10,6 +12,7 @@ import com.example.multibarcode.data.Product
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -41,16 +44,62 @@ class NewOrderViewModel(app: Application) : AndroidViewModel(app) {
     private val _ui = MutableStateFlow(NewOrderUiState())
     val ui: StateFlow<NewOrderUiState> = _ui.asStateFlow()
 
-    /** Called by the camera for every newly seen code. */
+    // In-memory barcode -> product, kept in sync with the products collection so each scan
+    // resolves INSTANTLY. (Previously every scan ran a Firestore query — that was the lag.)
+    private val productsByBarcode = HashMap<String, Product>()
+    @Volatile private var productsLoaded = false
+
+    private val toneGen by lazy { ToneGenerator(AudioManager.STREAM_MUSIC, 90) }
+
+    init {
+        viewModelScope.launch {
+            repo.productsFlow().collect { list ->
+                synchronized(productsByBarcode) {
+                    productsByBarcode.clear()
+                    list.forEach { productsByBarcode[it.barcode] = it }
+                }
+                productsLoaded = true
+            }
+        }
+    }
+
+    /** Called by the camera for every newly seen code. Instant: no network on the hot path. */
     fun onScan(code: DetectedBarcode) {
         if (_ui.value.awaitingProductFor != null) return
-        viewModelScope.launch {
-            val existing = repo.findProductByBarcode(code.value)
-            if (existing != null) {
-                addToCart(existing.id, existing.barcode, existing.name, existing.price)
-            } else {
-                _ui.update { it.copy(awaitingProductFor = code.value) }
+        val product = synchronized(productsByBarcode) { productsByBarcode[code.value] }
+        if (product != null) {
+            addToCart(product.id, product.barcode, product.name, product.price)
+            beep()
+            return
+        }
+        if (!productsLoaded) {
+            // Rare startup window before the in-memory map is filled: fall back to one lookup.
+            viewModelScope.launch {
+                val existing = repo.findProductByBarcode(code.value)
+                if (existing != null) {
+                    addToCart(existing.id, existing.barcode, existing.name, existing.price)
+                    beep()
+                } else {
+                    _ui.update { it.copy(awaitingProductFor = code.value) }
+                }
             }
+            return
+        }
+        _ui.update { it.copy(awaitingProductFor = code.value) }
+    }
+
+    private fun beep() {
+        try {
+            toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 120)
+        } catch (_: Exception) {
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        try {
+            toneGen.release()
+        } catch (_: Exception) {
         }
     }
 
@@ -76,6 +125,7 @@ class NewOrderViewModel(app: Application) : AndroidViewModel(app) {
                 Product(barcode = barcode, name = name, price = price, createdAt = System.currentTimeMillis())
             )
             addToCart(id, barcode, name, price)
+            beep()
             _ui.update { it.copy(awaitingProductFor = null) }
         }
     }
