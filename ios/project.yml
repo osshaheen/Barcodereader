@@ -4,6 +4,8 @@ options:
   deploymentTarget:
     iOS: "15.0"
   developmentLanguage: ar
+  # Keep the pbxproj readable by a range of Xcode versions on the CI runner.
+  objectVersion: 56
 
 settings:
   base:
