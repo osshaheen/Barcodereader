@@ -1,0 +1,27 @@
+name: Cleanup old release
+
+# One-off: remove the confusing pre-Firebase `local-debug` release/tag and make sure
+# `latest-debug` (the com.baghd.barcode Firebase build) is the one marked "Latest".
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete local-debug release and its tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete local-debug --repo "${{ github.repository }}" --yes --cleanup-tag \
+            || echo "local-debug release not found (already gone)"
+
+      - name: Mark latest-debug as the Latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit latest-debug --repo "${{ github.repository }}" --latest \
+            || echo "could not edit latest-debug"

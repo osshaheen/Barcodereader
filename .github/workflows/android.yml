@@ -37,9 +37,10 @@ jobs:
         with:
           tag_name: latest-debug
           name: Latest debug build
+          make_latest: true
           body: |
-            Direct-install debug APK of the Multi Barcode Reader.
-            Built automatically from the latest push.
+            Direct-install debug APK of the Multi Barcode Reader (com.baghd.barcode).
+            Built automatically from the latest push to master.
           files: app/build/outputs/apk/debug/app-debug.apk
 
       # Best-effort artifact upload; never fail the job if blob storage rejects it.
