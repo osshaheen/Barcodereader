@@ -386,13 +386,26 @@ class AppRepository(private val appContext: Context) {
     fun pendingOpsFlow(): Flow<List<PendingOp>> = outbox.observeAll()
     fun pendingCountFlow(): Flow<Int> = outbox.count()
 
-    /** Push every queued op to Firestore, deleting each on success. Returns uploaded count. */
+    /**
+     * Push every queued op to Firestore, deleting each on success. Customers upload first so that
+     * orders/payments referencing a locally-created customer ("local-…") get remapped to the real
+     * Firestore id. Returns uploaded count.
+     */
     suspend fun uploadPending(): Int {
         if (!online()) return 0
         var uploaded = 0
-        for (op in outbox.getAll()) {
+        val idMap = HashMap<String, String>() // "local-<opId>" -> real Firestore id
+        val ordered = outbox.getAll().sortedBy { typeRank(it.type) }
+        for (op in ordered) {
             try {
-                col(op.type)?.add(jsonToMap(op.payload))?.await()
+                val data = jsonToMap(op.payload).toMutableMap()
+                (data["customerId"] as? String)?.let { cid ->
+                    idMap[cid]?.let { data["customerId"] = it }
+                }
+                val ref = col(op.type)?.add(data)?.await()
+                if (op.type == "customers" && ref != null) {
+                    idMap["local-${op.id}"] = ref.id
+                }
                 outbox.delete(op)
                 uploaded++
             } catch (_: Exception) {
@@ -400,6 +413,14 @@ class AppRepository(private val appContext: Context) {
             }
         }
         return uploaded
+    }
+
+    private fun typeRank(type: String): Int = when (type) {
+        "customers" -> 0
+        "products" -> 1
+        "orders" -> 2
+        "payments" -> 3
+        else -> 4
     }
 
     private fun mapToJson(data: Map<String, Any?>): String = JSONObject(data).toString()
