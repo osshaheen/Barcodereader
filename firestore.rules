@@ -36,7 +36,14 @@ service cloud.firestore {
       allow write: if isSuperAdmin();
     }
 
-    // App data: owner-only, and only for the super admin or an allowlisted user.
+    // Shared shop data: one database for the whole shop. Any allowlisted user (or super admin)
+    // may read and write it. Covers shop/main and its subcollections (products/customers/
+    // orders/payments/backups) plus the meta doc's lastChange field.
+    match /shop/{document=**} {
+      allow read, write: if request.auth != null && (isSuperAdmin() || isAllowed());
+    }
+
+    // Legacy per-user data (kept readable/writable for the owner; no longer used for new data).
     match /users/{userId}/{document=**} {
       allow read, write: if request.auth != null
         && request.auth.uid == userId

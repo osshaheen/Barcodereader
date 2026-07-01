@@ -17,8 +17,11 @@ import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.AddShoppingCart
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.Card
@@ -57,6 +60,8 @@ fun HomeScreen(
     vm: HomeViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
 ) {
     val pendingCount by vm.pendingCount.collectAsStateWithLifecycle()
+    val hasUpdates by vm.hasUpdates.collectAsStateWithLifecycle()
+    val syncing by vm.syncing.collectAsStateWithLifecycle()
     val items = buildList {
         add(HomeItem("طلبية جديدة", Icons.Default.AddShoppingCart, onNewOrder))
         add(HomeItem("المنتجات", Icons.Default.Inventory2, onProducts))
@@ -72,6 +77,13 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text("قارئ الباركود المتعدد") },
                 actions = {
+                    IconButton(onClick = { vm.pull() }, enabled = !syncing) {
+                        if (syncing) {
+                            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Default.Refresh, contentDescription = "تحديث البيانات")
+                        }
+                    }
                     IconButton(onClick = onSignOut) {
                         Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "تسجيل الخروج")
                     }
@@ -80,6 +92,29 @@ fun HomeScreen(
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
+            if (hasUpdates) {
+                Card(
+                    onClick = { vm.pull() },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (syncing) {
+                            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Default.CloudDownload, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer)
+                        }
+                        Text(
+                            "  توجد إضافات جديدة من مستخدمين آخرين — اضغط لسحبها",
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+            }
             if (pendingCount > 0) {
                 Card(
                     onClick = onUpload,

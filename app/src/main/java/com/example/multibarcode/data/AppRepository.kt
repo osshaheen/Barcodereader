@@ -7,12 +7,15 @@ import com.example.multibarcode.util.XlsxWriter
 import com.example.multibarcode.util.Format
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -45,11 +48,28 @@ class AppRepository(private val appContext: Context) {
     private val db = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
     private val outbox = OutboxDatabase.get(appContext).pendingOpDao()
+    private val prefs = appContext.getSharedPreferences("sync", Context.MODE_PRIVATE)
+
+    // All employees share ONE shop database. Data is pulled into these caches only when the user
+    // presses "refresh" (manual pull), so nothing appears automatically — matching the manual
+    // upload flow. A tiny meta doc (shop/main.lastChange) tells other devices when to offer a pull.
+    private fun sharedRoot(): DocumentReference = db.collection("shop").document("main")
 
     private fun col(name: String): CollectionReference? =
-        auth.currentUser?.uid?.let { db.collection("users").document(it).collection(name) }
+        if (auth.currentUser == null) null else sharedRoot().collection(name)
 
     private fun online() = Connectivity.isOnline(appContext)
+
+    // In-memory caches of the shared data (last successful pull). The UI reads from these.
+    private val productsCache = MutableStateFlow<List<Product>>(emptyList())
+    private val customersCache = MutableStateFlow<List<Customer>>(emptyList())
+    private val ordersCache = MutableStateFlow<List<Order>>(emptyList())
+    private val paymentsCache = MutableStateFlow<List<Payment>>(emptyList())
+    private val backupsCache = MutableStateFlow<List<BackupRecord>>(emptyList())
+
+    /** Server-clock millis of the last change this device has pulled. */
+    private val lastPulledFlow = MutableStateFlow(prefs.getLong("lastPulled", 0L))
+    @Volatile private var initialSyncDone = false
 
     /** Always queue new records locally; they upload only when the user presses "upload". */
     private suspend fun queueWrite(collection: String, label: String, data: Map<String, Any?>, now: Long) {
@@ -60,28 +80,82 @@ class AppRepository(private val appContext: Context) {
     private fun <T> pendingTyped(type: String, map: (PendingOp) -> T?): Flow<List<T>> =
         outbox.observeAll().map { ops -> ops.filter { it.type == type }.mapNotNull(map) }
 
-    // ---- Generic snapshot flow ------------------------------------------
-    private fun <T> collectionFlow(name: String, map: (DocumentSnapshot) -> T?): Flow<List<T>> =
-        callbackFlow {
-            val c = col(name)
-            if (c == null) {
-                trySend(emptyList())
-                awaitClose { }
-                return@callbackFlow
-            }
-            val registration = c.addSnapshotListener { snapshot, error ->
-                if (error != null || snapshot == null) {
-                    trySend(emptyList())
-                } else {
-                    trySend(snapshot.documents.mapNotNull(map))
-                }
-            }
-            awaitClose { registration.remove() }
+    // ---- Manual pull of shared data --------------------------------------
+
+    /** Pull one collection's docs from the shared DB into memory. */
+    private suspend fun <T> pull(name: String, map: (DocumentSnapshot) -> T?): List<T>? {
+        val c = col(name) ?: return null
+        return c.get().await().documents.mapNotNull(map)
+    }
+
+    /**
+     * Pull the whole shared shop database into the in-memory caches and record the point in time
+     * we synced to. Returns true on success. Called manually (the "refresh" button) and once
+     * silently after sign-in so screens aren't empty.
+     */
+    suspend fun refreshFromRemote(): Boolean {
+        if (col("products") == null || !online()) return false
+        return try {
+            pull("products", ::toProduct)?.let { productsCache.value = it }
+            pull("customers", ::toCustomer)?.let { customersCache.value = it }
+            pull("orders", ::toOrder)?.let { ordersCache.value = it }
+            pull("payments", ::toPayment)?.let { paymentsCache.value = it }
+            pull("backups", ::toBackup)?.let { backupsCache.value = it }
+            setLastPulled(changeMillis(sharedRoot().get().await()))
+            true
+        } catch (e: Exception) {
+            false
         }
+    }
+
+    /** Silent one-time pull after sign-in (retries next time if this attempt fails, e.g. offline). */
+    suspend fun ensureInitialSync() {
+        if (initialSyncDone) return
+        if (refreshFromRemote()) initialSyncDone = true
+    }
+
+    private fun changeMillis(snap: DocumentSnapshot?): Long =
+        snap?.getTimestamp("lastChange")?.toDate()?.time ?: 0L
+
+    private fun setLastPulled(v: Long) {
+        prefs.edit().putLong("lastPulled", v).apply()
+        lastPulledFlow.value = v
+    }
+
+    /** Stamp the shared DB as changed, so other devices are offered a pull. */
+    private suspend fun bumpRemoteChange() {
+        runCatching {
+            sharedRoot().set(mapOf("lastChange" to FieldValue.serverTimestamp()), SetOptions.merge()).await()
+        }
+    }
+
+    /**
+     * After a direct online change (edit/delete/upload/backup): mark the shared DB changed and
+     * re-pull so THIS device reflects it immediately and its "last pulled" advances (so it does
+     * not show itself the "new updates" banner for its own change).
+     */
+    private suspend fun afterDirectChange() {
+        bumpRemoteChange()
+        refreshFromRemote()
+    }
+
+    /** Listens to the tiny meta doc and emits true when the shared DB is newer than our last pull. */
+    fun hasRemoteUpdatesFlow(): Flow<Boolean> =
+        combine(remoteChangeFlow(), lastPulledFlow) { remote, pulled -> remote > pulled + 1000 }
+
+    private fun remoteChangeFlow(): Flow<Long> = callbackFlow {
+        if (auth.currentUser == null) {
+            trySend(0L); awaitClose { }; return@callbackFlow
+        }
+        val reg = sharedRoot().addSnapshotListener { snap, err ->
+            trySend(if (err != null) 0L else changeMillis(snap))
+        }
+        awaitClose { reg.remove() }
+    }
 
     // ---- Products ---------------------------------------------------------
     fun productsFlow(): Flow<List<Product>> =
-        combine(collectionFlow("products", ::toProduct), pendingTyped("products", ::opToProduct)) { a, b -> a + b }
+        combine(productsCache, pendingTyped("products", ::opToProduct)) { a, b -> a + b }
 
     suspend fun findProductByBarcode(barcode: String): Product? {
         val c = col("products") ?: return null
@@ -101,12 +175,15 @@ class AppRepository(private val appContext: Context) {
             queueWrite("products", "منتج — ${product.name}", data, product.createdAt)
             "local-${product.createdAt}"
         } else {
-            col("products")?.document(product.id)?.set(data)?.await(); product.id
+            col("products")?.document(product.id)?.set(data)?.await()
+            afterDirectChange(); product.id
         }
     }
 
     suspend fun deleteProduct(product: Product) {
+        if (deleteLocalIfPending(product.id)) return
         col("products")?.document(product.id)?.delete()?.await()
+        afterDirectChange()
     }
 
     /** Save many products at once (used by the bulk-scan flow). */
@@ -126,6 +203,7 @@ class AppRepository(private val appContext: Context) {
             )
         }
         batch.commit().await()
+        afterDirectChange()
     }
 
     /** Login state for [email]: whether it's allowlisted and whether it's a super admin. */
@@ -205,7 +283,7 @@ class AppRepository(private val appContext: Context) {
 
     // ---- Customers --------------------------------------------------------
     fun customersFlow(): Flow<List<Customer>> =
-        combine(collectionFlow("customers", ::toCustomer), pendingTyped("customers", ::opToCustomer)) { a, b -> a + b }
+        combine(customersCache, pendingTyped("customers", ::opToCustomer)) { a, b -> a + b }
 
     suspend fun upsertCustomer(customer: Customer): String {
         val data = mapOf(
@@ -218,18 +296,21 @@ class AppRepository(private val appContext: Context) {
             queueWrite("customers", "زبون — ${customer.name}", data, customer.createdAt)
             "saved"
         } else {
-            // Edits target an existing Firestore doc (kept online).
-            col("customers")?.document(customer.id)?.set(data)?.await(); customer.id
+            // Edits target an existing shared doc (kept online).
+            col("customers")?.document(customer.id)?.set(data)?.await()
+            afterDirectChange(); customer.id
         }
     }
 
     suspend fun deleteCustomer(customer: Customer) {
+        if (deleteLocalIfPending(customer.id)) return
         col("customers")?.document(customer.id)?.delete()?.await()
+        afterDirectChange()
     }
 
     // ---- Orders -----------------------------------------------------------
     fun ordersFlow(): Flow<List<Order>> =
-        combine(collectionFlow("orders", ::toOrder), pendingTyped("orders", ::opToOrder)) { a, b -> a + b }
+        combine(ordersCache, pendingTyped("orders", ::opToOrder)) { a, b -> a + b }
 
     suspend fun saveOrder(
         customerId: String?,
@@ -261,7 +342,7 @@ class AppRepository(private val appContext: Context) {
 
     // ---- Payments ---------------------------------------------------------
     fun paymentsFlow(): Flow<List<Payment>> =
-        combine(collectionFlow("payments", ::toPayment), pendingTyped("payments", ::opToPayment)) { a, b -> a + b }
+        combine(paymentsCache, pendingTyped("payments", ::opToPayment)) { a, b -> a + b }
 
     suspend fun addPayment(payment: Payment): String {
         val data = mapOf(
@@ -275,7 +356,17 @@ class AppRepository(private val appContext: Context) {
     }
 
     suspend fun deletePayment(payment: Payment) {
+        if (deleteLocalIfPending(payment.id)) return
         col("payments")?.document(payment.id)?.delete()?.await()
+        afterDirectChange()
+    }
+
+    /** If [id] is a not-yet-uploaded local record ("local-<opId>"), drop it from the outbox. */
+    private suspend fun deleteLocalIfPending(id: String): Boolean {
+        if (!id.startsWith("local-")) return false
+        val opId = id.removePrefix("local-").toLongOrNull() ?: return true
+        outbox.getAll().firstOrNull { it.id == opId }?.let { outbox.delete(it) }
+        return true
     }
 
     // ---- Pending-op -> model mapping (for showing local data before upload) ----
@@ -418,6 +509,7 @@ class AppRepository(private val appContext: Context) {
                 // keep the op for a later retry
             }
         }
+        if (uploaded > 0) afterDirectChange()
         return uploaded
     }
 
@@ -455,7 +547,7 @@ class AppRepository(private val appContext: Context) {
 
     /** Records of every saved backup file, newest first. */
     fun backupsFlow(): Flow<List<BackupRecord>> =
-        collectionFlow("backups", ::toBackup).map { list -> list.sortedByDescending { it.createdAt } }
+        backupsCache.map { list -> list.sortedByDescending { it.createdAt } }
 
     private fun toBackup(d: DocumentSnapshot) = BackupRecord(
         id = d.id,
@@ -552,6 +644,7 @@ class AppRepository(private val appContext: Context) {
                 "createdAt" to System.currentTimeMillis(),
             )
         )?.await()
+        afterDirectChange()
         return BackupResult(true, "تم حفظ النسخة الاحتياطية: $fileName")
     }
 
@@ -565,6 +658,7 @@ class AppRepository(private val appContext: Context) {
         val payments = col("payments")?.whereEqualTo("customerId", customerId)?.get()?.await()?.documents ?: emptyList()
         orders.forEach { it.reference.delete().await() }
         payments.forEach { it.reference.delete().await() }
+        afterDirectChange()
         return BackupResult(true, "تم تصفير حساب الزبون بعد حفظ نسخة احتياطية.")
     }
 
