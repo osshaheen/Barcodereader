@@ -16,7 +16,7 @@ jobs:
       - name: Checkout the pre-Firebase commit
         uses: actions/checkout@v4
         with:
-          ref: 44fe4a8
+          ref: 44fe4a875dd72af8b6159cd2454dad16c04f65ee
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
