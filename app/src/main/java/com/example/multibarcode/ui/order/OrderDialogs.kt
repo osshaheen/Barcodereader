@@ -32,7 +32,7 @@ import com.example.multibarcode.util.Format
 
 /** Runs [onEvent] once when [savedOrderId] becomes non-null. */
 @Composable
-fun LaunchedSavedEvent(savedOrderId: Long?, onEvent: () -> Unit) {
+fun LaunchedSavedEvent(savedOrderId: String?, onEvent: () -> Unit) {
     LaunchedEffect(savedOrderId) {
         if (savedOrderId != null) onEvent()
     }

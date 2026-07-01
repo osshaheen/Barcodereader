@@ -94,6 +94,10 @@ dependencies {
     // ML Kit barcode scanning (bundled model, works offline)
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
 
+    // Full Guava so CameraX's ListenableFuture stays on the compile classpath
+    // (Firebase/Play-Services pull a conflicting guava-listenablefuture stub).
+    implementation("com.google.guava:guava:33.3.1-android")
+
     // Runtime camera permission helper for Compose
     implementation("com.google.accompanist:accompanist-permissions:0.34.0")
 
