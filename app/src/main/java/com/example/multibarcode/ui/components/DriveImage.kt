@@ -17,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import com.example.multibarcode.data.DriveService
 
 /** Small in-memory cache so scrolling/recomposition doesn't re-download Drive images. */
@@ -30,14 +29,12 @@ private object DriveImageCache {
 /** Loads and shows a product image stored on Drive by [fileId]; shows a placeholder while loading. */
 @Composable
 fun DriveImage(fileId: String?, modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-
     val bitmap by produceState<ImageBitmap?>(
         initialValue = fileId?.let { DriveImageCache.get(it) },
         key1 = fileId,
     ) {
         if (value == null && !fileId.isNullOrBlank()) {
-            val bytes = DriveService.download(context, fileId)
+            val bytes = DriveService.downloadPublicThumb(fileId)
             val decoded = bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
             decoded?.asImageBitmap()?.let {
                 DriveImageCache.put(fileId, it)

@@ -71,9 +71,16 @@ class BulkAddViewModel(app: Application) : AndroidViewModel(app) {
         val context = getApplication<Application>()
         viewModelScope.launch {
             _ui.update { it.copy(saving = true, message = null) }
+            val storageEmail = repo.getStorageDriveEmail()
+            if (storageEmail.isNullOrBlank()) {
+                _ui.update {
+                    it.copy(saving = false, message = "لم يتم تعيين حساب Google Drive للصور. اضبطه من إدارة الصلاحيات.")
+                }
+                return@launch
+            }
             val now = System.currentTimeMillis()
             val products = items.map { item ->
-                val fileId = DriveService.uploadJpeg(context, "${item.name}-${item.barcode}.jpg", item.jpeg)
+                val fileId = DriveService.uploadJpeg(context, storageEmail, "${item.name}-${item.barcode}.jpg", item.jpeg)
                 Product(
                     barcode = item.barcode,
                     name = item.name.trim(),

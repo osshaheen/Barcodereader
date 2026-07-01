@@ -1,5 +1,9 @@
 package com.example.multibarcode.ui.admin
 
+import android.accounts.Account
+import android.accounts.AccountManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,14 +32,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.multibarcode.data.DriveService
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,7 +53,30 @@ fun AdminScreen(
 ) {
     val requests by vm.requests.collectAsStateWithLifecycle()
     val allowlist by vm.allowlist.collectAsStateWithLifecycle()
+    val storageEmail by vm.storageDriveEmail.collectAsStateWithLifecycle()
     var newEmail by remember { mutableStateOf("") }
+
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val consentLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { /* consent granted (or cancelled); uploads will work once granted */ }
+    val pickAccountLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val email = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
+        if (!email.isNullOrBlank()) {
+            vm.setStorageDriveEmail(email)
+            scope.launch {
+                try {
+                    DriveService.ensureConsent(context, email)
+                } catch (e: DriveService.NeedsConsent) {
+                    consentLauncher.launch(e.intent)
+                } catch (_: Exception) {
+                }
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -63,6 +94,37 @@ fun AdminScreen(
             modifier = Modifier.fillMaxSize().padding(padding).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                        Text("حساب Google Drive للصور", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "كل صور المنتجات تُرفع إلى هذا الحساب الواحد (بغضّ النظر عمّن سجّل الدخول).",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Text(
+                            "الحالي: ${storageEmail ?: "غير مضبوط"}",
+                            fontWeight = FontWeight.Bold,
+                            color = if (storageEmail == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(vertical = 6.dp),
+                        )
+                        TextButton(onClick = {
+                            // Typed null binds the API-safe (deprecated) overload on minSdk 23.
+                            val allowable: ArrayList<Account>? = null
+                            @Suppress("DEPRECATION")
+                            val intent = AccountManager.newChooseAccountIntent(
+                                null, allowable, arrayOf("com.google"), null, null, null, null,
+                            )
+                            pickAccountLauncher.launch(intent)
+                        }) {
+                            Text(if (storageEmail == null) "اختيار الحساب" else "تغيير الحساب")
+                        }
+                    }
+                }
+            }
+
+            item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+
             item {
                 Text("طلبات الدخول (${requests.size})", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
             }

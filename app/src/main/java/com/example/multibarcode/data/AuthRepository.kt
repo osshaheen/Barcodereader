@@ -5,7 +5,6 @@ import com.example.multibarcode.R
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.gms.common.api.Scope
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
@@ -19,9 +18,6 @@ class AuthRepository {
 
     private val auth = FirebaseAuth.getInstance()
 
-    /** Drive scope so the same sign-in can upload product images to the user's Drive. */
-    val driveScope = "https://www.googleapis.com/auth/drive.file"
-
     val userFlow: Flow<FirebaseUser?> = callbackFlow {
         val listener = FirebaseAuth.AuthStateListener { trySend(it.currentUser) }
         auth.addAuthStateListener(listener)
@@ -34,7 +30,6 @@ class AuthRepository {
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestIdToken(context.getString(R.string.default_web_client_id))
             .requestEmail()
-            .requestScopes(Scope(driveScope))
             .build()
         return GoogleSignIn.getClient(context, gso)
     }

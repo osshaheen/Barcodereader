@@ -161,6 +161,23 @@ class AppRepository {
         db.collection("accessRequests").document(email.trim().lowercase()).delete().await()
     }
 
+    // ---- Single storage Drive account (for product images) ----------------
+    private fun storageDoc() = db.collection("settings").document("storage")
+
+    fun storageDriveEmailFlow(): Flow<String?> = callbackFlow {
+        val reg = storageDoc().addSnapshotListener { snap, err ->
+            trySend(if (err != null || snap == null) null else snap.getString("driveEmail"))
+        }
+        awaitClose { reg.remove() }
+    }
+
+    suspend fun getStorageDriveEmail(): String? =
+        storageDoc().get().await().getString("driveEmail")
+
+    suspend fun setStorageDriveEmail(email: String) {
+        storageDoc().set(mapOf("driveEmail" to email.trim()), SetOptions.merge()).await()
+    }
+
     // ---- Customers --------------------------------------------------------
     fun customersFlow(): Flow<List<Customer>> = collectionFlow("customers", ::toCustomer)
 
