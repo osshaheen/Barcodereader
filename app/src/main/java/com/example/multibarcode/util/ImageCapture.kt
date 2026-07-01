@@ -5,9 +5,10 @@ import android.graphics.Matrix
 import android.graphics.Rect
 import java.io.ByteArrayOutputStream
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 
-/** Helpers to turn a camera frame + barcode box into a small JPEG product thumbnail. */
+/** Helpers to turn a camera frame + barcode box into a product thumbnail JPEG. */
 object ImageCapture {
 
     fun rotate(src: Bitmap, degrees: Int): Bitmap {
@@ -17,28 +18,39 @@ object ImageCapture {
     }
 
     /**
-     * Crop around [box] (expanded by [expand] on each side to capture the product, not just the
-     * code), scale down to [maxDim], and JPEG-encode. Returns null if the crop is empty.
+     * Crop a large region **centered on the barcode** so the thumbnail shows the actual product
+     * (the biscuit, the cola bottle, …), not just the code. The region is the larger of a big
+     * multiple of the code's size or ~65% of the frame's shorter side, then scaled to [maxDim].
      */
-    fun cropThumbnailJpeg(
+    fun cropProductThumbnailJpeg(
         upright: Bitmap,
         box: Rect,
-        expand: Float = 0.7f,
-        maxDim: Int = 512,
-        quality: Int = 80,
+        maxDim: Int = 640,
+        quality: Int = 82,
     ): ByteArray? {
-        val padX = (box.width() * expand).roundToInt()
-        val padY = (box.height() * expand).roundToInt()
-        val left = (box.left - padX).coerceIn(0, upright.width - 1)
-        val top = (box.top - padY).coerceIn(0, upright.height - 1)
-        val right = (box.right + padX).coerceIn(left + 1, upright.width)
-        val bottom = (box.bottom + padY).coerceIn(top + 1, upright.height)
+        val w = upright.width
+        val h = upright.height
+        val shorterSide = min(w, h)
+        val boxMax = max(box.width(), box.height())
 
-        val w = right - left
-        val h = bottom - top
-        if (w <= 0 || h <= 0) return null
+        // Region side: big enough to include the product around the code.
+        val side = max((boxMax * 4f).roundToInt(), (shorterSide * 0.65f).roundToInt())
+            .coerceAtMost(min(w, h))
 
-        var cropped = Bitmap.createBitmap(upright, left, top, w, h)
+        val cx = box.centerX()
+        val cy = box.centerY()
+        var left = cx - side / 2
+        var top = cy - side / 2
+        // Keep the region inside the bitmap.
+        left = left.coerceIn(0, w - side)
+        top = top.coerceIn(0, h - side)
+        val right = (left + side).coerceAtMost(w)
+        val bottom = (top + side).coerceAtMost(h)
+        val cw = right - left
+        val ch = bottom - top
+        if (cw <= 0 || ch <= 0) return null
+
+        var cropped = Bitmap.createBitmap(upright, left, top, cw, ch)
 
         val longest = max(cropped.width, cropped.height)
         if (longest > maxDim) {

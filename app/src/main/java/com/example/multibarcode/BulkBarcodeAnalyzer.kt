@@ -25,7 +25,15 @@ class BulkBarcodeAnalyzer(
 
     private val scanner = BarcodeScanning.getClient(
         BarcodeScannerOptions.Builder()
-            .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
+            // Only standard retail product codes + QR; ML Kit validates EAN/UPC checksums,
+            // so partial/garbage reads are rejected automatically.
+            .setBarcodeFormats(
+                Barcode.FORMAT_EAN_13,
+                Barcode.FORMAT_EAN_8,
+                Barcode.FORMAT_UPC_A,
+                Barcode.FORMAT_UPC_E,
+                Barcode.FORMAT_QR_CODE,
+            )
             .build()
     )
     private val lastSeen = HashMap<String, Long>()
@@ -64,7 +72,7 @@ class BulkBarcodeAnalyzer(
                     try {
                         val upright = ImageCapture.rotate(imageProxy.toBitmap(), rotation)
                         fresh.forEach { d ->
-                            ImageCapture.cropThumbnailJpeg(upright, d.boundingBox)?.let { jpeg ->
+                            ImageCapture.cropProductThumbnailJpeg(upright, d.boundingBox)?.let { jpeg ->
                                 onCapture(d.value, jpeg)
                             }
                         }

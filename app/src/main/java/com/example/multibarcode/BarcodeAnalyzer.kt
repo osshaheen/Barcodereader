@@ -22,8 +22,15 @@ class BarcodeAnalyzer(
 
     private val scanner: BarcodeScanner = BarcodeScanning.getClient(
         BarcodeScannerOptions.Builder()
-            // All common formats, so QR codes and product barcodes are detected together.
-            .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
+            // Standard retail product codes + QR only (EAN/UPC are checksum-validated),
+            // so invalid or partial reads are rejected.
+            .setBarcodeFormats(
+                Barcode.FORMAT_EAN_13,
+                Barcode.FORMAT_EAN_8,
+                Barcode.FORMAT_UPC_A,
+                Barcode.FORMAT_UPC_E,
+                Barcode.FORMAT_QR_CODE,
+            )
             .build()
     )
 
