@@ -1,0 +1,37 @@
+name: MultiBarcode
+options:
+  bundleIdPrefix: com.baghd
+  deploymentTarget:
+    iOS: "15.0"
+  developmentLanguage: ar
+
+settings:
+  base:
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+
+targets:
+  MultiBarcode:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.baghd.barcode
+        GENERATE_INFOPLIST_FILE: "YES"
+        TARGETED_DEVICE_FAMILY: "1"
+        INFOPLIST_KEY_CFBundleDisplayName: "قارئ الباركود"
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: "YES"
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait"
+        INFOPLIST_KEY_NSCameraUsageDescription: "تُستخدم الكاميرا لمسح الباركود وأخذ صور المنتجات."
+
+schemes:
+  MultiBarcode:
+    build:
+      targets:
+        MultiBarcode: all
+    run:
+      config: Debug

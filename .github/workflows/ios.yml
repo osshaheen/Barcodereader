@@ -1,0 +1,36 @@
+name: Build iOS
+
+on:
+  push:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      # Simulator build needs no code signing, so it verifies the whole app compiles
+      # without an Apple Developer account.
+      - name: Build (iOS Simulator, no signing)
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project MultiBarcode.xcodeproj \
+            -scheme MultiBarcode \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
