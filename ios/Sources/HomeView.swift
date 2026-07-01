@@ -1,7 +1,7 @@
 import SwiftUI
 
 private enum Route: Hashable {
-    case products, customers, orders, newOrder
+    case products, customers, orders, newOrder, liveScan
 }
 
 private struct HomeItem: Identifiable {
@@ -17,6 +17,7 @@ struct HomeView: View {
         HomeItem(title: "المنتجات", systemImage: "shippingbox", route: .products),
         HomeItem(title: "الزبائن", systemImage: "person.2", route: .customers),
         HomeItem(title: "الطلبيات", systemImage: "doc.text", route: .orders),
+        HomeItem(title: "الماسح المباشر", systemImage: "qrcode.viewfinder", route: .liveScan),
     ]
 
     private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
@@ -49,6 +50,7 @@ struct HomeView: View {
                 case .customers: CustomersView()
                 case .orders: OrdersView()
                 case .newOrder: NewOrderView()
+                case .liveScan: LiveScanView()
                 }
             }
         }

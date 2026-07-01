@@ -8,6 +8,7 @@ struct NewOrderView: View {
     @State private var selectedCustomerId: String? = nil
     @State private var barcodeInput = ""
     @State private var pendingUnknown: String? = nil   // barcode with no product yet
+    @State private var showScanner = false
 
     private var total: Double { items.reduce(0) { $0 + $1.lineTotal } }
 
@@ -22,9 +23,14 @@ struct NewOrderView: View {
                 }
             }
 
-            Section("إضافة صنف بالباركود") {
+            Section("إضافة صنف") {
+                Button {
+                    showScanner = true
+                } label: {
+                    Label("مسح بالكاميرا", systemImage: "barcode.viewfinder")
+                }
                 HStack {
-                    TextField("الباركود", text: $barcodeInput)
+                    TextField("أو أدخل الباركود يدويًا", text: $barcodeInput)
                         .keyboardType(.numbersAndPunctuation)
                         .onSubmit(addByInput)
                     Button("إضافة", action: addByInput)
@@ -57,6 +63,16 @@ struct NewOrderView: View {
             }
         }
         .navigationTitle("طلبية جديدة")
+        .fullScreenCover(isPresented: $showScanner) {
+            ScannerSheet { code in
+                if let p = store.product(barcode: code) {
+                    addProductToCart(p)   // keep scanning
+                } else {
+                    showScanner = false
+                    pendingUnknown = code // ask to add the product
+                }
+            }
+        }
         .sheet(isPresented: Binding(get: { pendingUnknown != nil }, set: { if !$0 { pendingUnknown = nil } })) {
             NewProductInline(barcode: pendingUnknown ?? "") { product in
                 store.upsert(product)
