@@ -109,6 +109,7 @@ fun CameraScanner(
                         it.setSurfaceProvider(previewView.surfaceProvider)
                     }
                     val analysis = ImageAnalysis.Builder()
+                        .setResolutionSelector(highResSelector())
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                         .build()
                         .also { it.setAnalyzer(cameraExecutor, analyzer) }
