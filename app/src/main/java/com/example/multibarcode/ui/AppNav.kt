@@ -9,6 +9,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.multibarcode.ui.auth.AuthPhase
 import com.example.multibarcode.ui.auth.AuthViewModel
 import com.example.multibarcode.ui.auth.LoginScreen
 import com.example.multibarcode.ui.customers.CustomerDetailScreen
@@ -16,6 +17,7 @@ import com.example.multibarcode.ui.customers.CustomersScreen
 import com.example.multibarcode.ui.home.HomeScreen
 import com.example.multibarcode.ui.order.NewOrderScreen
 import com.example.multibarcode.ui.order.OrdersScreen
+import com.example.multibarcode.ui.products.BulkAddScreen
 import com.example.multibarcode.ui.products.ProductsScreen
 import com.example.multibarcode.ui.scan.LiveScanScreen
 
@@ -27,6 +29,7 @@ object Routes {
     const val CUSTOMER_DETAIL = "customer"
     const val ORDERS = "orders"
     const val LIVE_SCAN = "liveScan"
+    const val BULK_ADD = "bulkAdd"
 
     fun customerDetail(id: String) = "$CUSTOMER_DETAIL/$id"
 }
@@ -34,12 +37,12 @@ object Routes {
 @Composable
 fun AppNav() {
     val authVm: AuthViewModel = viewModel()
-    val user by authVm.user.collectAsStateWithLifecycle()
+    val ui by authVm.ui.collectAsStateWithLifecycle()
 
-    if (user == null) {
-        LoginScreen(vm = authVm)
-    } else {
+    if (ui.phase == AuthPhase.AUTHORIZED) {
         MainNav(onSignOut = { authVm.signOut() })
+    } else {
+        LoginScreen(vm = authVm)
     }
 }
 
@@ -59,7 +62,16 @@ private fun MainNav(onSignOut: () -> Unit) {
             )
         }
         composable(Routes.PRODUCTS) {
-            ProductsScreen(onBack = { nav.popBackStack() })
+            ProductsScreen(
+                onBack = { nav.popBackStack() },
+                onBulkAdd = { nav.navigate(Routes.BULK_ADD) },
+            )
+        }
+        composable(Routes.BULK_ADD) {
+            BulkAddScreen(
+                onBack = { nav.popBackStack() },
+                onDone = { nav.popBackStack() },
+            )
         }
         composable(Routes.NEW_ORDER) {
             NewOrderScreen(

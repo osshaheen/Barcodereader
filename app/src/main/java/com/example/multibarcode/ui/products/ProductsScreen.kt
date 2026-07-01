@@ -6,8 +6,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -30,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -45,6 +48,7 @@ import com.example.multibarcode.util.Format
 @Composable
 fun ProductsScreen(
     onBack: () -> Unit,
+    onBulkAdd: () -> Unit,
     vm: ProductsViewModel = viewModel(),
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -60,6 +64,11 @@ fun ProductsScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onBulkAdd) {
+                        Icon(Icons.Default.QrCodeScanner, contentDescription = "مسح دفعة")
                     }
                 },
             )
@@ -134,7 +143,16 @@ private fun ProductRow(product: Product, onEdit: () -> Unit, onDelete: () -> Uni
             Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(Modifier.weight(1f)) {
+            product.imageFileId?.let {
+                com.example.multibarcode.ui.components.DriveImage(
+                    fileId = it,
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .padding(end = 0.dp),
+                )
+            }
+            Column(Modifier.weight(1f).padding(start = 8.dp)) {
                 Text(product.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                 Text(product.barcode, style = MaterialTheme.typography.bodySmall)
                 Text(

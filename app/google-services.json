@@ -12,7 +12,20 @@
           "package_name": "com.baghd.barcode"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "618919396372-duobtsstb3ebudpposi7icpq1hpp0gc1.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.baghd.barcode",
+            "certificate_hash": "84c3593f734bee289ba522d47324ff19c796e1bb"
+          }
+        },
+        {
+          "client_id": "618919396372-3s0aj0u881kgo9h8m9vfih341jdibtpr.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBhBdBIVnRf71DKwqDg0gUTbTuWsWtPbaU"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "618919396372-3s0aj0u881kgo9h8m9vfih341jdibtpr.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

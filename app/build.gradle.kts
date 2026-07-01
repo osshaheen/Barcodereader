@@ -91,6 +91,12 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-auth-ktx")
 
+    // Google Sign-In (provides GoogleSignInClient + GoogleAuthUtil for Drive tokens)
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
+
+    // HTTP client for the Drive REST API
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     // Coroutines (+ await() for Play Services Tasks)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")

@@ -1,18 +1,27 @@
 package com.example.multibarcode.data
 
+import android.content.Context
+import com.example.multibarcode.R
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInClient
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.Scope
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.GoogleAuthProvider
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 
-/** Firebase email/password authentication. */
+/** Google-only authentication, backed by Firebase Auth. */
 class AuthRepository {
 
     private val auth = FirebaseAuth.getInstance()
 
-    /** Emits the current user (or null) and updates on sign-in/sign-out. */
+    /** Drive scope so the same sign-in can upload product images to the user's Drive. */
+    val driveScope = "https://www.googleapis.com/auth/drive.file"
+
     val userFlow: Flow<FirebaseUser?> = callbackFlow {
         val listener = FirebaseAuth.AuthStateListener { trySend(it.currentUser) }
         auth.addAuthStateListener(listener)
@@ -21,15 +30,24 @@ class AuthRepository {
 
     val currentUser: FirebaseUser? get() = auth.currentUser
 
-    suspend fun signIn(email: String, password: String) {
-        auth.signInWithEmailAndPassword(email.trim(), password).await()
+    fun googleClient(context: Context): GoogleSignInClient {
+        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestIdToken(context.getString(R.string.default_web_client_id))
+            .requestEmail()
+            .requestScopes(Scope(driveScope))
+            .build()
+        return GoogleSignIn.getClient(context, gso)
     }
 
-    suspend fun signUp(email: String, password: String) {
-        auth.createUserWithEmailAndPassword(email.trim(), password).await()
+    suspend fun signInWithGoogle(idToken: String): FirebaseUser? {
+        val credential = GoogleAuthProvider.getCredential(idToken, null)
+        return auth.signInWithCredential(credential).await().user
     }
 
-    fun signOut() = auth.signOut()
+    fun signOut(context: Context) {
+        auth.signOut()
+        googleClient(context).signOut()
+    }
 
     companion object {
         @Volatile

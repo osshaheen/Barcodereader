@@ -69,6 +69,7 @@ class AppRepository {
             "name" to product.name,
             "price" to product.price,
             "createdAt" to product.createdAt,
+            "imageFileId" to product.imageFileId,
         )
         return if (product.id.isBlank()) {
             c.add(data).await().id
@@ -79,6 +80,31 @@ class AppRepository {
 
     suspend fun deleteProduct(product: Product) {
         col("products")?.document(product.id)?.delete()?.await()
+    }
+
+    /** Save many products at once (used by the bulk-scan flow). */
+    suspend fun addProducts(products: List<Product>) {
+        val c = col("products") ?: return
+        val batch = db.batch()
+        products.forEach { p ->
+            batch.set(
+                c.document(),
+                mapOf(
+                    "barcode" to p.barcode,
+                    "name" to p.name,
+                    "price" to p.price,
+                    "createdAt" to p.createdAt,
+                    "imageFileId" to p.imageFileId,
+                ),
+            )
+        }
+        batch.commit().await()
+    }
+
+    /** True if [email] is present in the top-level `allowlist` collection (login gate). */
+    suspend fun isEmailAllowed(email: String): Boolean {
+        val doc = db.collection("allowlist").document(email.trim().lowercase()).get().await()
+        return doc.exists()
     }
 
     // ---- Customers --------------------------------------------------------
@@ -159,6 +185,7 @@ class AppRepository {
         name = d.getString("name") ?: "",
         price = d.getDouble("price") ?: 0.0,
         createdAt = d.getLong("createdAt") ?: 0,
+        imageFileId = d.getString("imageFileId"),
     )
 
     private fun toCustomer(d: DocumentSnapshot) = Customer(

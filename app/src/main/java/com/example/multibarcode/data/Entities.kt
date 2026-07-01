@@ -11,6 +11,8 @@ data class Product(
     val name: String = "",
     val price: Double = 0.0,
     val createdAt: Long = 0,
+    /** Google Drive file id of the product image, if any. */
+    val imageFileId: String? = null,
 )
 
 data class Customer(
