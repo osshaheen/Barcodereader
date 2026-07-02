@@ -37,13 +37,18 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.baghd.barcode
-        GENERATE_INFOPLIST_FILE: "YES"
         TARGETED_DEVICE_FAMILY: "1"
-        INFOPLIST_KEY_CFBundleDisplayName: "قارئ الباركود"
-        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: "YES"
-        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
-        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait"
-        INFOPLIST_KEY_NSCameraUsageDescription: "تُستخدم الكاميرا لمسح الباركود وأخذ صور المنتجات."
+    info:
+      path: Sources/Info.plist
+      properties:
+        CFBundleDisplayName: "قارئ الباركود"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSCameraUsageDescription: "تُستخدم الكاميرا لمسح الباركود وأخذ صور المنتجات."
+        CFBundleURLTypes:
+          - CFBundleURLSchemes:
+              - "com.googleusercontent.apps.618919396372-sb8v7un1t1di0bkui9h0925u1iv5knlj"
 
 schemes:
   MultiBarcode:
